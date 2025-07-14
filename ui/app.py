@@ -1,3 +1,25 @@
+"""
+ui/app.py
+
+Streamlit application entrypoint for the "Comparador de comparendos".
+
+This app provides a web interface to:
+  1. Accept raw text blocks pasted from various platforms (SIMIT, FENIX, etc.).
+  2. Upload an Excel file from the previous day containing comparendos data.
+  3. Extract and compare current data against the Excel to identify:
+     - New comparendos
+     - Deleted comparendos
+     - Maintained comparendos
+  4. Filter results for FENIX and SIMIT platforms and detect changes in notification dates:
+     - "dato actualizado" when a prior blank/N-A becomes a valid date
+     - "modificado" when one valid date changes to another
+  5. Display summary tables and metrics using Streamlit components.
+  6. Offer a download of the complete comparison report as an Excel file.
+
+Usage:
+    streamlit run ui/app.py
+"""
+
 #!/usr/bin/env python3
 # ui/app.py
 
