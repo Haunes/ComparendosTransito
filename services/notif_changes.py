@@ -1,3 +1,35 @@
+"""
+services/notif_changes.py
+
+Provides functionality to detect changes in the notification date of comparendos
+between two DataFrame summaries (old vs. new). It focuses on two types of valid
+transitions, ignoring any shifts to or from non–date statuses:
+
+  - 'dato actualizado': when a comparendo had an empty/N‑A notification date and now has a valid date.
+  - 'modificado'      : when a comparendo’s notification date changes from one valid date to a different valid date.
+
+Any transition where the new value is not a strictly formatted date (dd/mm/yyyy),
+such as “En proceso notificación” or “No aplica”, is excluded from the results.
+
+Functions:
+  _clean(val) -> str
+    Normalize a raw cell value to an empty string if missing or in a predefined
+    N‑A set, otherwise return the trimmed string.
+
+  _is_date(s) -> bool
+    Return True if the string exactly matches the dd/mm/yyyy pattern.
+
+  detect_notif_changes(resumen_old: DataFrame, resumen_new: DataFrame) -> DataFrame
+    Compare the 'fecha_notif' column of two DataFrames filtered to maintained
+    comparendos, returning a DataFrame with columns:
+      - comparendo
+      - placa
+      - fecha_notif_old
+      - fecha_notif_new
+      - tipo_cambio  ('dato actualizado' or 'modificado')
+"""
+
+
 # services/notif_changes.py
 
 import re
