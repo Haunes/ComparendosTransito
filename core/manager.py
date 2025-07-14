@@ -1,3 +1,36 @@
+"""
+core/manager.py
+
+Este módulo proporciona la lógica para descubrir e invocar parsers que extraen
+información de comparendos desde bloques de texto, y luego agrupa y resume esos
+datos.
+
+Funciones:
+  _discover() -> dict[str, Callable]
+    Explora el paquete `parsers`, importa cada módulo que defina una función
+    `parse` y construye un diccionario que asocia el nombre de la sección
+    (SECTION) con dicha función de parseo.
+
+  _sections(txt: str) -> Generator[tuple[str, str], None, None]
+    Divide el texto completo en secciones basándose en los títulos que coinciden
+    con las claves de PARSERS, emitiendo pares (título, contenido del bloque).
+
+  run_extract(txt_path: pathlib.Path) -> tuple[pd.DataFrame, pd.DataFrame]
+    Lee el archivo de texto en `txt_path`, segmenta el contenido en secciones,
+    ejecuta el parser adecuado para cada bloque y normaliza la salida en dos
+    DataFrames:
+      - detalle: filas individuales con campos id_raw, id_key, placa,
+        fecha_notif y fuente.
+      - resumen: agrupación por id_key que incluye comparendo, placa,
+        fecha_notif, lista de fuentes y número de apariciones (veces).
+    Lanza ValueError si no se encuentra ningún comparendo en el texto.
+
+Constantes:
+  PARSERS: diccionario global resultante de `_discover()`, que mapea cada
+           clave de sección a su función `parse`.
+"""
+
+
 # core/manager.py
 import pkgutil, importlib, inspect, pathlib, pandas as pd
 from .clean import id_key
