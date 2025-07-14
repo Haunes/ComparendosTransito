@@ -1,5 +1,30 @@
-# ui/excel_reader.py
+"""
+ui/excel_reader.py
 
+This module provides functionality to read and normalize comparendo data from an
+uploaded Excel file. It reads the 'COMPARENDOS' sheet (with header on row 7), forces
+all data to text, locates the columns for comparendo number, license plate, and
+notification date (according to the web page), and returns a cleaned DataFrame.
+
+Functions:
+  - _fmt_date(val) -> str
+      Normalize a value into 'dd/mm/YYYY' format or empty string if missing.
+  - _find_comp_col(cols: dict[str,str]) -> str|None
+      Identify the correct column name for 'Número de Comparendo' excluding any
+      date-related columns.
+  - _find_notif_col(cols: dict[str,str]) -> str|None
+      Locate the notification date column specifically marked 'Según página web',
+      excluding any 'imposición' fields.
+  - resumen_desde_excel(uploaded) -> pd.DataFrame
+      Read the uploaded Excel file, extract and normalize comparendo entries,
+      producing a DataFrame with columns:
+        * id_key (normalized numeric key)
+        * comparendo (original string)
+        * placa (license plate, if present)
+        * fecha_notif (notification date formatted)
+        * fuentes (initialized empty list)
+        * veces (initialized zero)
+"""
 import re
 import pandas as pd
 from datetime import datetime
@@ -9,12 +34,6 @@ _MISSING = {"", "N/A", "NA", "ND", "N.D", "NO APLICA", "-"}
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}")
 
 def _fmt_date(val) -> str:
-    """
-    - Si es NaN → ""
-    - Si ya es datetime → "dd/mm/aaaa"
-    - Si es string ISO "YYYY-MM-DD hh:mm:ss" → parse y formatea
-    - Si es otro string (p.ej. "25/06/2025") → devuelve tal cual
-    """
     if pd.isna(val):
         return ""
     if isinstance(val, datetime):
@@ -54,7 +73,7 @@ def resumen_desde_excel(uploaded) -> pd.DataFrame:
         sheet_name="COMPARENDOS",
         header=6,
         engine="openpyxl",
-        dtype=str,   # todo a texto
+        dtype=str,
     )
 
     cols = {c.lower(): c for c in df.columns}
@@ -73,7 +92,6 @@ def resumen_desde_excel(uploaded) -> pd.DataFrame:
     mask     = claves.astype(bool)
     df_valid = df.loc[mask]
 
-    # ahora aplicamos _fmt_date a raw strings o ISO strings
     resumen = pd.DataFrame({
         "id_key":      claves[mask],
         "comparendo":  raw_cmp[mask],
