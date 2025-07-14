@@ -1,3 +1,27 @@
+"""
+ui/layout.py
+
+This module defines reusable Streamlit UI components for the comparendos
+comparison app. It abstracts page setup, input widgets, and data display
+into simple functions for cleaner app orchestration.
+
+Functions:
+  page_header(title: str) -> None
+    Configure page metadata and display the main title.
+
+  input_blocks(platforms: list[str]) -> dict[str, str]
+    Render text areas for each platform and return only non-empty inputs.
+
+  input_excel() -> UploadedFile
+    Render a file uploader for the previous day's Excel and return the uploaded file.
+
+  show_metrics(df_mant: DataFrame, df_add: DataFrame, df_del: DataFrame) -> None
+    Display three metrics: counts of maintained, added, and deleted comparendos.
+
+  show_table(title: str, df: DataFrame, color: str) -> None
+    Render a subheader with an icon/color and display a DataFrame as a table.
+"""
+
 # ui/layout.py
 import streamlit as st
 import pandas as pd
