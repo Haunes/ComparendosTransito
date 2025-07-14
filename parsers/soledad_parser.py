@@ -1,19 +1,18 @@
-"""
-soledad_parser.py
------------------
-Ejemplo de línea:
-
-# Orden: 08758000000026402107 Notificado
-
-• Captura el número que aparece después de '# Orden:'.
-• Patrón: 1 letra opcional + 14 o más dígitos.
-"""
-
+# parsers/magdalena.py
 import re
-from typing import List
 
-RE_ORDEN = re.compile(r"#\s*Orden:\s*([A-Z]?\d{14,})", re.I)
+SECTION = "SOLEDAD"
 
-def parse(block_text: str) -> List[str]:
-    """Devuelve todos los IDs que siguen a '# Orden:'."""
-    return RE_ORDEN.findall(block_text)
+# Línea con '# Orden: <id> Notificado'
+_ORDEN_RE = re.compile(r"^#\s*Orden:\s*([A-Z]?\d+)\b", flags=re.I)
+
+def parse(text: str):
+    """
+    Cada vez que aparece '# Orden: 47745001000032113038 Notificado'
+    extrae el número 47745001000032113038 como 'id' y devuelve placa vacía.
+    """
+    for line in text.splitlines():
+        m = _ORDEN_RE.match(line)
+        if m:
+            rid = m.group(1).strip()
+            yield {"id": rid, "placa": ""}

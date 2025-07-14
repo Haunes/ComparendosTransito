@@ -1,26 +1,18 @@
-"""
-magdalena_parser.py
--------------------
-Formato típico:
-
-# Orden: 47745001000032113038 Notificado
-2021-11-17 - 15:55
-...
-
-• El número de comparendo (o "orden") está justo después de la
-  cadena "# Orden:" y antes de la palabra "Notificado".
-• Puede ser 1 letra opcional + ≥14 dígitos.
-"""
-
+# parsers/magdalena.py
 import re
-from typing import List
 
-RE_ORDEN = re.compile(r"#\s*Orden:\s*([A-Z]?\d{14,})", re.I)
+SECTION = "MAGDALENA"
 
-def parse(block_text: str) -> List[str]:
+# Línea con '# Orden: <id> Notificado'
+_ORDEN_RE = re.compile(r"^#\s*Orden:\s*([A-Z]?\d+)\b", flags=re.I)
+
+def parse(text: str):
     """
-    Devuelve la lista de todos los números que siguen a '# Orden:'.
-    Si el mismo ID aparece dos veces, se devuelve dos veces (main.py
-    ya unifica según necesites).
+    Cada vez que aparece '# Orden: 47745001000032113038 Notificado'
+    extrae el número 47745001000032113038 como 'id' y devuelve placa vacía.
     """
-    return RE_ORDEN.findall(block_text)
+    for line in text.splitlines():
+        m = _ORDEN_RE.match(line)
+        if m:
+            rid = m.group(1).strip()
+            yield {"id": rid, "placa": ""}

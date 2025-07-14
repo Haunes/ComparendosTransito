@@ -1,28 +1,34 @@
-"""
-medellin_parser.py
-------------------
-Formato típico de cada fila:
-
-  901354352  NFZ914  D05001000000048242254  12/06/2025  C29  No aplica ...
-
-Regla:
-• Columnas separadas por uno o más espacios (no hay tabuladores).
-• El **ID** del comparendo es siempre la 3.ª columna (índice 2).
-• Patrón: 1 letra opcional + ≥14 dígitos.
-"""
+# parsers/medellin.py
 
 import re
-from typing import List
 
-RE_ID = re.compile(r"^[A-Z]?\d{14,}$")
+SECTION = "MEDELLIN"
 
-def parse(block_text: str) -> List[str]:
-    ids: List[str] = []
-    for linea in block_text.splitlines():
-        linea = linea.strip()
-        if not linea:
+# ID: opcional letra + 17+ dígitos
+_ID_RE    = re.compile(r"^[A-Z]?\d{17,}$")
+# Placa: 3 letras + 3 dígitos
+_PLATE_RE = re.compile(r"^[A-Z]{3}\d{3}$")
+
+def parse(text: str):
+    """
+    Cada línea tipo:
+      Identificación Placa NroComparendo Fecha ... (resto)
+    Ejemplo:
+      901354352 LCM709 D05001000000048247110 17/06/2025 C29 ...
+    Devuelve dicts con:
+      { "id": "<NroComparendo>", "placa": "<Placa>" }
+    """
+    for line in text.splitlines():
+        parts = line.strip().split()
+        if len(parts) < 3:
             continue
-        columnas = linea.split()  # división por espacios consecutivos
-        if len(columnas) >= 3 and RE_ID.match(columnas[2]):
-            ids.append(columnas[2])
-    return ids
+
+        placa = parts[1]
+        rid   = parts[2]
+
+        if not _PLATE_RE.match(placa):
+            continue
+        if not _ID_RE.match(rid):
+            continue
+
+        yield {"id": rid, "placa": placa}

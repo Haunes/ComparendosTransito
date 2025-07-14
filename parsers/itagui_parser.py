@@ -1,24 +1,32 @@
-"""
-itagui_parser.py
-----------------
-Formato de fila (ejemplo):
-901354352  NZQ126  D05360000000049474182  06/06/2025  C14  ...
-
-Regla:
-• Divide por espacios/tabs consecutivos.
-• Toma la 3.ª columna.
-• Patrón: 1 letra opcional + ≥14 dígitos.
-"""
-
+# parsers/itagui.py
 import re
-from typing import List
 
-RE_ID = re.compile(r"^[A-Z]?\d{14,}$")
+SECTION = "ITAGUI"
 
-def parse(block_text: str) -> List[str]:
-    ids: List[str] = []
-    for linea in block_text.splitlines():
-        cols = linea.strip().split()          # divide por espacios
-        if len(cols) >= 3 and RE_ID.match(cols[2]):
-            ids.append(cols[2])
-    return ids
+# ID de comparendo: opcional letra + 17+ dígitos
+_ID_RE    = re.compile(r"^[A-Z]?\d{17,}$")
+# Placa: 3 letras + 3 dígitos
+_PLATE_RE = re.compile(r"^[A-Z]{3}\d{3}$")
+
+def parse(text: str):
+    """
+    Parser para Alcaldía de Itagüí.
+    Cada línea de interés es:
+      Identificación Placa ID Fecha ...
+    Ejemplo:
+      901354352 NZQ126 D05360000000049474182 06/06/2025 C14 ...
+
+    Devuelve dicts con:
+      {"id": "<ID>", "placa": "<Placa>"}
+    """
+    for line in text.splitlines():
+        parts = line.strip().split()
+        if len(parts) < 3:
+            continue
+        placa = parts[1].strip()
+        rid   = parts[2].strip()
+        if not _PLATE_RE.match(placa):
+            continue
+        if not _ID_RE.match(rid):
+            continue
+        yield {"id": rid, "placa": placa}

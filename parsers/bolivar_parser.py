@@ -1,26 +1,21 @@
-"""
-bolivar_parser.py
------------------
-Ejemplo de bloque:
-
-13683001000049160635
-24/02/2025
-
-NO
-603.930
-
-• El número de comparendo está en cualquier línea que contenga
-  solo dígitos (≥14) —puede haber varias filas así en el bloque.
-"""
-
+# parsers/bolivar_parser.py
 import re
-from typing import List
 
-RE_ID = re.compile(r"^\d{14,}$")      # solo dígitos, 14 o más
+SECTION = "BOLIVAR"
 
-def parse(block_text: str) -> List[str]:
-    ids: List[str] = []
-    for linea in block_text.splitlines():
-        if RE_ID.fullmatch(linea.strip()):
-            ids.append(linea.strip())
-    return ids
+# ID de comparendo: opcional letra + dígitos (17+)
+_ID_RE = re.compile(r"^[A-Z]?\d{17,}$")
+
+def parse(text: str):
+    """
+    Parser para Gobernación de Bolívar.
+    El comparendo aparece como bloque de líneas, pero sólo interesa
+    el número de comparendo (ID) en la primera línea.
+
+    Devuelve dicts con:
+      {"id": "<ID>", "placa": ""}
+    """
+    for line in text.splitlines():
+        line = line.strip()
+        if _ID_RE.match(line):
+            yield {"id": line, "placa": ""}

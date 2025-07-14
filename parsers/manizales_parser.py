@@ -1,23 +1,34 @@
-"""
-manizales_parser.py
--------------------
-Ejemplo de fila:
-901354352  NZP448  D17001000000047711823  12/12/2024  D04  ...
-
-• Separa la línea por uno o más espacios o tabuladores.
-• Toma la 3.ª columna y la devuelve si coincide con:
-      1 letra opcional + 14 o más dígitos.
-"""
-
+# parsers/manizales.py
 import re
-from typing import List
 
-RE_ID = re.compile(r"^[A-Z]?\d{14,}$")
+SECTION = "MANIZALES"
 
-def parse(block_text: str) -> List[str]:
-    ids: List[str] = []
-    for linea in block_text.splitlines():
-        cols = linea.strip().split()          # espacios consecutivos
-        if len(cols) >= 3 and RE_ID.match(cols[2]):
-            ids.append(cols[2])
-    return ids
+# ID de comparendo: opcional letra + 17+ dígitos
+_ID_RE    = re.compile(r"^[A-Z]?\d{17,}$")
+# Placa: 3 letras + 3 dígitos
+_PLATE_RE = re.compile(r"^[A-Z]{3}\d{3}$")
+
+def parse(text: str):
+    """
+    Parser para Alcaldía de Manizales.
+    Cada línea de interés es:
+      Identificación Placa ID Fecha ...
+    Ejemplo:
+      901354352 NZP448 D17001000000047711823 12/12/2024 D04 ...
+
+    Devuelve dicts con:
+      {"id": "<NroComparendo>", "placa": "<Placa>"}
+    """
+    for line in text.splitlines():
+        parts = line.strip().split()
+        # Mínimo 3 partes: identificación, placa, comparendo
+        if len(parts) < 3:
+            continue
+        placa = parts[1].strip()
+        rid   = parts[2].strip()
+        # Validar placa e ID
+        if not _PLATE_RE.match(placa):
+            continue
+        if not _ID_RE.match(rid):
+            continue
+        yield {"id": rid, "placa": placa}

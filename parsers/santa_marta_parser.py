@@ -1,23 +1,21 @@
-"""
-santa_marta_parser.py  (versión corregida)
------------------------------------------
-• Busca líneas que empiezan por 'Aviso del comparendo'
-  y NO contienen '.pdf'.
-• De esas líneas toma el número inmediatamente después
-  de la frase.
-"""
-
+# parsers/santa_marta_parser.py
 import re
-from typing import List
 
-RE_LINE = re.compile(r"Aviso del comparendo\s+(\d{14,})", re.I)
+SECTION = "SANTA MARTA"
 
-def parse(block_text: str) -> List[str]:
-    ids: List[str] = []
-    for ln in block_text.splitlines():
-        if ".pdf" in ln.lower():
-            continue                       # descartar líneas de archivos
-        m = RE_LINE.search(ln)
+# Línea que inicia con 'Aviso del comparendo ' seguida de ID
+_SAM_RE = re.compile(r"^Aviso del comparendo\s+([A-Z]?\d{17,})\b")
+
+def parse(text: str):
+    """
+    Parser para Alcaldía de Santa Marta.
+    Lee cada línea, y cuando empieza con 'Aviso del comparendo ',
+    extrae el ID de comparendo. No hay placa en esta plataforma.
+
+    Devuelve dicts:
+      {"id": "<ID>", "placa": ""}
+    """
+    for line in text.splitlines():
+        m = _SAM_RE.match(line.strip())
         if m:
-            ids.append(m.group(1))
-    return ids
+            yield {"id": m.group(1), "placa": ""}
