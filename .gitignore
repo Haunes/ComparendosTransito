@@ -9,3 +9,5 @@ venv/
 
 # Otros que convenga ignorar
 .DS_Store
+
+test/
