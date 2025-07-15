@@ -14,15 +14,16 @@ This app provides a web interface to:
      - "dato actualizado" when a prior blank/N-A becomes a valid date
      - "modificado" when one valid date changes to another
   5. Display summary tables and metrics using Streamlit components.
-  6. Offer a download of the complete comparison report as an Excel file.
+  6. Calculate discount‐deadline dates based on Colombian business days (holidays included):
+     - 50% discount: 1 to 11 business days after notification
+     - 25% discount: 12 to 26 business days after notification
+  7. Offer a download of the complete comparison report as an Excel file.
 
 Usage:
     streamlit run ui/app.py
 """
 
 #!/usr/bin/env python3
-# ui/app.py
-
 import sys
 import pathlib
 
@@ -32,6 +33,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import streamlit as st
+import pandas as pd
+import holidays
+from pandas.tseries.offsets import CustomBusinessDay
 
 from ui.constants           import PLATFORMS, TITLE
 from ui.layout              import (
@@ -46,14 +50,12 @@ from services.extractor     import compare
 from services.notif_changes import detect_notif_changes
 from services.writer        import build_excel
 
-# ────────────────────────────────────────────────────────────────────────
 page_header(TITLE)
 
-blocks  = input_blocks(PLATFORMS)   # Textos pegados por plataforma
-xls_old = input_excel()             # Excel “ayer” (hoja COMPARENDOS)
+blocks  = input_blocks(PLATFORMS)
+xls_old = input_excel()
 
 if st.button("▶️ Procesar"):
-    # ── Validación ─────────────────────────────────────────────────────
     if not blocks or not xls_old:
         st.warning("Faltan bloques de texto o falta subir el Excel.")
         st.stop()
@@ -65,11 +67,33 @@ if st.button("▶️ Procesar"):
     detalle_new, resumen_new, df_mant, df_add, df_del = compare(blocks, xls_old)
 
     # 3️⃣ Filtrar sólo FENIX y SIMIT para verificar cambios de notificación
-    mask_fs = resumen_new["fuentes"].str.contains(r"\b(FENIX|SIMIT)\b", regex=True)
+    mask_fs = resumen_new["fuentes"].str.contains(r"\b(?:FENIX|SIMIT)\b", regex=True)
     res_fs  = resumen_new[mask_fs].copy()
 
     # 4️⃣ Detectar “dato actualizado” y “modificado” en fecha_notif
     df_fecha = detect_notif_changes(resumen_old, res_fs)
+
+    # 5️⃣ Calcular fechas de vencimiento para descuentos (50% y 25%)
+    if not df_fecha.empty:
+        # Convertir a datetime
+        df_fecha["_dt"] = pd.to_datetime(
+            df_fecha["fecha_notif_new"],
+            format="%d/%m/%Y",
+            dayfirst=True
+        )
+        # Cargar feriados de Colombia para los años involucrados
+        years = sorted(df_fecha["_dt"].dt.year.unique().tolist())
+        co_holidays = holidays.CountryHoliday("CO", years=years)
+        cbd = CustomBusinessDay(holidays=list(co_holidays.keys()))
+        # Sumar días hábiles
+        df_fecha["venc_50"] = df_fecha["_dt"].apply(lambda d: (d + 11 * cbd).strftime("%d/%m/%Y"))
+        df_fecha["venc_25"] = df_fecha["_dt"].apply(lambda d: (d + 26 * cbd).strftime("%d/%m/%Y"))
+        # Eliminar columna auxiliar
+        df_fecha.drop(columns=["_dt"], inplace=True)
+        df_fecha.rename(columns={
+            "venc_50": "Fecha 50% descuento",
+            "venc_25": "Fecha 25% descuento"
+        }, inplace=True)
 
     # ── Presentación ────────────────────────────────────────────────────
     st.subheader("📋 Resumen de todos los comparendos detectados hoy")

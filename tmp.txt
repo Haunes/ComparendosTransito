@@ -53,20 +53,6 @@ $ 604.100	$ 604.100
 Detalle Pago
 
 
-08001000000049608716
-Comparendo
-
-Fecha imposición: 26/05/2025	27/06/2025	NUW548	Barranquilla	
-C02...
-Fotodetección
-
-Pendiente
-No tiene curso
-
-$ 603.939	$ 603.939
-Detalle Pago
-
-
 11001000000046968185
 Comparendo
 
@@ -205,6 +191,7 @@ No tiene curso
 
 $ 377.700	$ 377.700
 Detalle Pago
+
 
 76001000000050210051
 Comparendo
@@ -409,11 +396,12 @@ Fecha imposición: 04/07/2025	10/07/2025	KYU812	Bogota D.C.
 C29...
 Fotodetección
 
-Pendiente
+Pendiente Curso
 No tiene curso
 
-$ 604.100	$ 604.100
+$ 377.700	$ 377.700
 Detalle Pago
+
 
 17380000000049186047
 Comparendo
@@ -457,20 +445,6 @@ $ 603.939	$ 603.939
 Detalle Pago
 
 
-08001000000049631057
-Comparendo
-
-Fecha imposición: 30/06/2025	30/06/2025	NFV617	Barranquilla	
-C29...
-Fotodetección
-
-Pendiente
-No tiene curso
-
-$ 603.939	$ 603.939
-Detalle Pago
-
-
 47053000000045465741
 Comparendo
 
@@ -499,17 +473,17 @@ $ 1.145.029	$ 1.145.029
 Detalle Pago
 
 
-11001000000046969968
+08001000000049608716
 Comparendo
 
-Fecha imposición: 11/06/2025	16/06/2025	NFZ464	Bogota D.C.	
-C29...
+Fecha imposición: 26/05/2025	15/07/2025	NUW548	Barranquilla	
+C02...
 Fotodetección
 
 Pendiente
 No tiene curso
 
-$ 604.100	$ 604.100
+$ 603.939	$ 603.939
 Detalle Pago
 
 
@@ -624,6 +598,7 @@ No tiene curso
 $ 604.100	$ 604.100
 Detalle Pago
 
+
 76001000000048872050
 Comparendo
 
@@ -705,6 +680,20 @@ Pendiente
 No tiene curso
 
 $ 604.100	$ 604.100
+Detalle Pago
+
+
+08001000000049631057
+Comparendo
+
+Fecha imposición: 30/06/2025	15/07/2025	NFV617	Barranquilla	
+C29...
+Fotodetección
+
+Pendiente
+No tiene curso
+
+$ 603.939	$ 603.939
 Detalle Pago
 
 
@@ -833,6 +822,7 @@ No tiene curso
 $ 603.930	$ 603.930
 Detalle Pago
 
+
 08758000000049783100
 Comparendo
 
@@ -844,6 +834,20 @@ Pendiente
 No tiene curso
 
 $ 603.930	$ 603.930
+Detalle Pago
+
+
+11001000000047056737
+Comparendo
+
+Fecha imposición: 14/07/2025	En proceso notificación	NPX700	Bogota D.C.	
+C29...
+Fotodetección
+
+Pendiente
+No tiene curso
+
+$ 604.100	$ 604.100
 Detalle Pago
 
 
@@ -875,26 +879,25 @@ $ 603.930	$ 603.930
 Detalle Pago
 FENIX
 Comparendo - camaras salvavidas	VIGENTE	11001000000039571821	LVV783	12/01/2024	18/01/2024	$ 357.700	$ 0	$ 0	$ 357.700	Cámaras salvavidas	
-Comparendo - camaras salvavidas	VIGENTE	11001000000037790645	LHS266	02/05/2023	06/09/2023	$ 2.600	$ 260	$ 0	$ 2.860	Cámaras salvavidas	
+Comparendo - camaras salvavidas	VIGENTE	11001000000037790645	LHS266	02/05/2023	06/09/2023	$ 2.600	$ 261	$ 0	$ 2.861	Cámaras salvavidas	
 Comparendo - comparendera	VIGENTE	11001000000042735753	LZN818	23/08/2024		$ 572.600	$ 0	$ 0	$ 572.600	Control en vía apoyado en dispositivos móviles	
 Comparendo - camaras salvavidas	VIGENTE	11001000000046759467	KOY340	26/03/2025	20/06/2025	$ 604.100	$ 0	$ 0	$ 604.100	Cámaras salvavidas	
 Comparendo - camaras salvavidas	VIGENTE	11001000000046908971	NFZ806	19/05/2025	23/05/2025	$ 604.100	$ 0	$ 0	$ 604.100	Cámaras salvavidas	
 Comparendo - camaras salvavidas	VIGENTE	11001000000046966379	LHV566	09/06/2025	12/06/2025	$ 604.100	$ 0	$ 0	$ 604.100	Cámaras salvavidas	
 Comparendo - camaras fijas centro de gestion	VIGENTE	11001000000046968185	NFV227	10/06/2025	13/06/2025	$ 604.100	$ 0	$ 0	$ 604.100	Cámaras fijas centro de gestión	
 Comparendo - camaras salvavidas	VIGENTE	11001000000046969773	KOV157	11/06/2025	16/06/2025	$ 604.100	$ 0	$ 0	$ 604.100	Cámaras salvavidas	
-Comparendo - camaras salvavidas	VIGENTE	11001000000046969968	NFZ464	11/06/2025	16/06/2025	$ 604.100	$ 0	$ 0	$ 604.100	Cámaras salvavidas	
 Comparendo - camaras salvavidas	VIGENTE	11001000000046970074	KOV157	11/06/2025	16/06/2025	$ 604.100	$ 0	$ 0	$ 604.100	Cámaras salvavidas	
 Comparendo - camaras salvavidas	VIGENTE	11001000000046973745	KOZ060	15/06/2025	18/06/2025	$ 604.100	$ 0	$ 0	$ 604.100	Cámaras salvavidas	
 Comparendo - camaras salvavidas	VIGENTE	11001000000046979447	LHS429	18/06/2025	24/06/2025	$ 604.100	$ 0	$ 0	$ 604.100	Cámaras salvavidas	
 Comparendo - camaras salvavidas	VIGENTE	11001000000046979904	NPW510	18/06/2025	24/06/2025	$ 604.100	$ 0	$ 0	$ 604.100	Cámaras salvavidas	
 Comparendo - camaras salvavidas	VIGENTE	11001000000046980005	LHV558	18/06/2025	24/06/2025	$ 604.100	$ 0	$ 0	$ 604.100	Cámaras salvavidas	
-Comparendo - camaras salvavidas	VIGENTE	11001000000046993105	LHT807	27/06/2025		$ 604.100	$ 0	$ 0	$ 604.100	Cámaras salvavidas	
+Comparendo - camaras salvavidas	VIGENTE	11001000000046993105	LHT807	27/06/2025	14/07/2025	$ 226.400	$ 0	$ 0	$ 226.400	Cámaras salvavidas	
 Comparendo - camaras salvavidas	VIGENTE	11001000000046999936	NZO678	01/07/2025		$ 604.100	$ 0	$ 0	$ 604.100	Cámaras salvavidas	
-Comparendo - camaras salvavidas	VIGENTE	11001000000047003913	KYU812	04/07/2025	10/07/2025	$ 226.400	$ 0	$ 0	$ 226.400	Cámaras salvavidas	
 Comparendo - camaras salvavidas	VIGENTE	11001000000047004111	KOX021	05/07/2025	10/07/2025	$ 604.100	$ 0	$ 0	$ 604.100	Cámaras salvavidas	
-Comparendo - camaras fijas centro de gestion	VIGENTE	11001000000047046203	NZR144	07/07/2025	14/07/2025	$ 604.100	$ 0	$ 0	$ 604.100	Cámaras fijas centro de gestión	
-Comparendo - camaras salvavidas	VIGENTE	11001000000047053311	KYW224	12/07/2025		$ 604.100	$ 0	$ 0	$ 604.100	Cámaras salvavidas
-Comparendo - camaras fijas centro de gestion	VIGENTE	11001000000047053680	NZP676	12/07/2025		$ 604.100	$ 0	$ 0	$ 604.100	Cámaras fijas centro de gestión
+Comparendo - camaras fijas centro de gestion	VIGENTE	11001000000047046203	NZR144	07/07/2025	14/07/2025	$ 226.400	$ 0	$ 0	$ 226.400	Cámaras fijas centro de gestión	
+Comparendo - camaras salvavidas	VIGENTE	11001000000047053311	KYW224	12/07/2025		$ 604.100	$ 0	$ 0	$ 604.100	Cámaras salvavidas	
+Comparendo - camaras fijas centro de gestion	VIGENTE	11001000000047053680	NZP676	12/07/2025		$ 604.100	$ 0	$ 0	$ 604.100	Cámaras fijas centro de gestión	
+Comparendo - camaras salvavidas	VIGENTE	11001000000047056737	NPX700	14/07/2025		$ 604.100	$ 0	$ 0	$ 604.100	Cámaras salvavidas
 MEDELLIN
 901354352 LCM709 D05001000000048247110 17/06/2025 C29 No aplica No aplica No aplica $ 604.054 $ 604.054
 901354352 NFZ914 D05001000000048242254 12/06/2025 C29 No aplica No aplica No aplica $ 604.054 $ 604.054
@@ -919,7 +922,7 @@ BELLO
 901354352 POS525 D05088000000049868582 14/05/2025 C14 No aplica No aplica No aplica $ 604.043 $ 604.043
 901354352 NZS963 D05088000000050491590 09/06/2025 C14 No aplica No aplica No aplica $ 604.043 $ 604.043
 901354352 PMX066 D05088000000050505845 05/07/2025 C29 No aplica No aplica No aplica $ 604.043 $ 604.043
-901354352 NFV087 D05088000000045561725 02/08/2024 C14 0000715381 04/10/2024 $ 85.146 $ 572.624 $ 657.770
+901354352 NFV087 D05088000000045561725 02/08/2024 C14 0000715381 04/10/2024 $ 85.324 $ 572.624 $ 657.948
 ITAGUI
 901354352 NZQ126 D05360000000049474182 06/06/2025 C14 No aplica No aplica No aplica $ 604.000 $ 604.000
 901354352 NZQ126 D05360000000049479336 13/06/2025 C14 No aplica No aplica No aplica $ 604.000 $ 604.000
