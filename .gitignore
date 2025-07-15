@@ -10,4 +10,7 @@ venv/
 # Otros que convenga ignorar
 .DS_Store
 
-test/
+# Ignorar la carpeta de tests
+tests/
+pytest.ini
+tmp.txt
