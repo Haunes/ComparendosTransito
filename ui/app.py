@@ -50,6 +50,68 @@ from services.extractor     import compare
 from services.notif_changes import detect_notif_changes
 from services.writer        import build_excel
 
+def calcular_fechas_descuento(df, fecha_col="fecha_notif"):
+    """
+    Calcula fechas de vencimiento para descuentos 50% y 25%
+    SOLO contando días hábiles (excluyendo fines de semana y festivos colombianos)
+    """
+    if df.empty or fecha_col not in df.columns:
+        return df
+    
+    df_copy = df.copy()
+    
+    # Filtrar solo las filas que tienen fecha válida (DD/MM/AAAA)
+    mask_fecha = df_copy[fecha_col].str.match(r'^\d{2}/\d{2}/\d{4}$', na=False)
+    df_con_fecha = df_copy[mask_fecha].copy()
+    
+    if df_con_fecha.empty:
+        return df_copy
+    
+    # Convertir strings a datetime
+    df_con_fecha["_dt"] = pd.to_datetime(
+        df_con_fecha[fecha_col],
+        format="%d/%m/%Y",
+        dayfirst=True
+    )
+    
+    # 🇨🇴 Cargar TODOS los festivos oficiales de Colombia
+    years = sorted(df_con_fecha["_dt"].dt.year.unique().tolist())
+    co_holidays = holidays.CountryHoliday("CO", years=years)
+    
+    # 📅 CustomBusinessDay excluye sábados, domingos y festivos colombianos
+    cbd = CustomBusinessDay(holidays=list(co_holidays.keys()))
+    
+    # 🧮 Sumar SOLO días hábiles:
+    # 50% descuento: 11 días hábiles después de notificación
+    df_con_fecha["Fecha 50% descuento"] = df_con_fecha["_dt"].apply(
+        lambda d: (d + 11 * cbd).strftime("%d/%m/%Y")
+    )
+    
+    # 25% descuento: 26 días hábiles después de notificación  
+    df_con_fecha["Fecha 25% descuento"] = df_con_fecha["_dt"].apply(
+        lambda d: (d + 26 * cbd).strftime("%d/%m/%Y")
+    )
+    
+    # Limpiar columna temporal
+    df_con_fecha.drop(columns=["_dt"], inplace=True)
+    
+    # Actualizar DataFrame original solo para las filas con fecha válida
+    df_copy.loc[mask_fecha, "Fecha 50% descuento"] = df_con_fecha["Fecha 50% descuento"]
+    df_copy.loc[mask_fecha, "Fecha 25% descuento"] = df_con_fecha["Fecha 25% descuento"]
+    
+    # Las filas sin fecha quedan con valores vacíos
+    if "Fecha 50% descuento" not in df_copy.columns:
+        df_copy["Fecha 50% descuento"] = ""
+    if "Fecha 25% descuento" not in df_copy.columns:
+        df_copy["Fecha 25% descuento"] = ""
+    
+    df_copy.loc[~mask_fecha, "Fecha 50% descuento"] = ""
+    df_copy.loc[~mask_fecha, "Fecha 25% descuento"] = ""
+    
+    return df_copy
+
+# ── APLICACIÓN PRINCIPAL ──────────────────────────────────────────────
+
 page_header(TITLE)
 
 blocks  = input_blocks(PLATFORMS)
@@ -70,47 +132,55 @@ if st.button("▶️ Procesar"):
     mask_fs = resumen_new["fuentes"].str.contains(r"\b(?:FENIX|SIMIT)\b", regex=True)
     res_fs  = resumen_new[mask_fs].copy()
 
-    # 4️⃣ Detectar “dato actualizado” y “modificado” en fecha_notif
+    # 4️⃣ Detectar "dato actualizado" y "modificado" en fecha_notif
     df_fecha = detect_notif_changes(resumen_old, res_fs)
 
-    # 5️⃣ Calcular fechas de vencimiento para descuentos (50% y 25%)
+    # 5️⃣ Calcular fechas de vencimiento para descuentos en cambios de fecha
     if not df_fecha.empty:
-        # Convertir a datetime
-        df_fecha["_dt"] = pd.to_datetime(
-            df_fecha["fecha_notif_new"],
-            format="%d/%m/%Y",
-            dayfirst=True
-        )
-        # Cargar feriados de Colombia para los años involucrados
-        years = sorted(df_fecha["_dt"].dt.year.unique().tolist())
-        co_holidays = holidays.CountryHoliday("CO", years=years)
-        cbd = CustomBusinessDay(holidays=list(co_holidays.keys()))
-        # Sumar días hábiles
-        df_fecha["venc_50"] = df_fecha["_dt"].apply(lambda d: (d + 11 * cbd).strftime("%d/%m/%Y"))
-        df_fecha["venc_25"] = df_fecha["_dt"].apply(lambda d: (d + 26 * cbd).strftime("%d/%m/%Y"))
-        # Eliminar columna auxiliar
-        df_fecha.drop(columns=["_dt"], inplace=True)
-        df_fecha.rename(columns={
-            "venc_50": "Fecha 50% descuento",
-            "venc_25": "Fecha 25% descuento"
-        }, inplace=True)
+        df_fecha = calcular_fechas_descuento(df_fecha, "fecha_notif_new")
+        # Renombrar las columnas para que sean más claras
+        df_fecha = df_fecha.rename(columns={
+            "fecha_notif_new": "fecha_notif_nueva"
+        })
 
-    # ── Presentación ────────────────────────────────────────────────────
+    # 6️⃣ Calcular fechas de descuento para comparendos añadidos de SIMIT
+    if not df_add.empty and "fecha_notif" in df_add.columns:
+        # Identificar filas de SIMIT con fecha de notificación válida
+        mask_simit = df_add["fuentes"].str.contains(r"\bSIMIT\b", regex=True)
+        mask_notif = df_add["fecha_notif"].str.match(r'^\d{2}/\d{2}/\d{4}$', na=False)
+        mask_simit_con_fecha = mask_simit & mask_notif
+        
+        if mask_simit_con_fecha.any():
+            # Calcular fechas de descuento solo para SIMIT con fecha válida
+            df_add = calcular_fechas_descuento(df_add, "fecha_notif")
+
+    # ── PRESENTACIÓN DE RESULTADOS ─────────────────────────────────────
+    
     st.subheader("📋 Resumen de todos los comparendos detectados hoy")
+    
+    # Definir columnas a mostrar en el resumen principal
+    columnas_mostrar = ["comparendo", "placa", "fuentes", "veces"]
+    if "fecha_imposicion" in resumen_new.columns:
+        columnas_mostrar.insert(-2, "fecha_imposicion")
+    if "fecha_notif" in resumen_new.columns:
+        columnas_mostrar.insert(-2, "fecha_notif")
+    
     st.dataframe(
-        resumen_new[["comparendo", "placa", "fuentes", "veces"]],
+        resumen_new[columnas_mostrar],
         use_container_width=True,
     )
 
+    # Mostrar métricas y tablas de comparación
     show_metrics(df_mant, df_add, df_del)
     show_table("Se mantienen", df_mant, "🟢")
     show_table("Añadidos",     df_add,  "➕")
     show_table("Eliminados",   df_del,  "➖")
 
+    # Mostrar cambios en fechas de notificación
     if not df_fecha.empty:
         show_table("Cambios en Fecha de notificación", df_fecha, "✏️")
 
-    # ── Botón de descarga del Excel completo ────────────────────────────
+    # ── DESCARGA DEL EXCEL COMPLETO ────────────────────────────────────
     st.download_button(
         "💾 Descargar Excel completo",
         data=build_excel(
