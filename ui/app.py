@@ -132,20 +132,56 @@ if st.button("▶️ Procesar"):
             "fecha_notif_new": "fecha_notif_nueva"
         })
 
-    # 6️⃣ Filtrar comparendos añadidos de SIMIT con fecha de notificación y calcular descuentos
-    df_add_simit = pd.DataFrame()
-    if not df_add.empty:
-        # Filtrar solo los de SIMIT que tienen fecha de notificación
+    # 6️⃣ Calcular fechas de descuento para comparendos añadidos de SIMIT
+    if not df_add.empty and "fecha_notif" in df_add.columns:
+        # Identificar filas de SIMIT con fecha de notificación válida
         mask_simit = df_add["fuentes"].str.contains(r"\bSIMIT\b", regex=True)
-        df_add_simit = df_add[mask_simit].copy()
+        mask_notif = df_add["fecha_notif"].str.match(r'^\d{2}/\d{2}/\d{4}
+
+    # ── Presentación ────────────────────────────────────────────────────
+    st.subheader("📋 Resumen de todos los comparendos detectados hoy")
+    
+    # Definir columnas a mostrar
+    columnas_mostrar = ["comparendo", "placa", "fuentes", "veces"]
+    if "fecha_imposicion" in resumen_new.columns:
+        columnas_mostrar.insert(-2, "fecha_imposicion")
+    if "fecha_notif" in resumen_new.columns:
+        columnas_mostrar.insert(-2, "fecha_notif")
+    
+    st.dataframe(
+        resumen_new[columnas_mostrar],
+        use_container_width=True,
+    )
+
+    show_metrics(df_mant, df_add, df_del)
+    show_table("Se mantienen", df_mant, "🟢")
+    show_table("Añadidos",     df_add,  "➕")
+    show_table("Eliminados",   df_del,  "➖")
+
+    # Mostrar cambios en fechas de notificación
+    if not df_fecha.empty:
+        show_table("Cambios en Fecha de notificación", df_fecha, "✏️")
+
+    # ── Botón de descarga del Excel completo ────────────────────────────
+    st.download_button(
+        "💾 Descargar Excel completo",
+        data=build_excel(
+            detalle_new,
+            resumen_new,
+            df_mant,
+            df_add,
+            df_del,
+            df_fecha if not df_fecha.empty else None
+        ),
+        file_name="comparendos_resultado.xlsx",
+    )
+else:
+    st.info("Pega los bloques y sube el Excel para comenzar."), na=False)
+        mask_simit_con_fecha = mask_simit & mask_notif
         
-        if not df_add_simit.empty and "fecha_notif" in df_add_simit.columns:
-            # Filtrar solo los que tienen fecha de notificación válida
-            mask_notif = df_add_simit["fecha_notif"].str.match(r'^\d{2}/\d{2}/\d{4}$', na=False)
-            df_add_simit = df_add_simit[mask_notif].copy()
-            
-            if not df_add_simit.empty:
-                df_add_simit = calcular_fechas_descuento(df_add_simit, "fecha_notif")
+        if mask_simit_con_fecha.any():
+            # Calcular fechas de descuento solo para SIMIT con fecha válida
+            df_add = calcular_fechas_descuento(df_add, "fecha_notif")
 
     # ── Presentación ────────────────────────────────────────────────────
     st.subheader("📋 Resumen de todos los comparendos detectados hoy")
