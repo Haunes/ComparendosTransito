@@ -25,6 +25,14 @@ Functions:
         * fuentes (initialized empty list)
         * veces (initialized zero)
 """
+"""
+ui/excel_reader.py
+
+This module provides functionality to read and normalize comparendo data from an
+uploaded Excel file. It reads the 'COMPARENDOS' sheet (with header on row 7), forces
+all data to text, locates the columns for comparendo number, license plate, and
+notification date (according to the web page), and returns a cleaned DataFrame.
+"""
 import re
 import pandas as pd
 from datetime import datetime
@@ -67,6 +75,12 @@ def _find_notif_col(cols: dict[str,str]) -> str|None:
             return orig
     return None
 
+def _find_imposicion_col(cols: dict[str,str]) -> str|None:
+    for low, orig in cols.items():
+        if "imposicion" in low or "imposición" in low:
+            return orig
+    return None
+
 def resumen_desde_excel(uploaded) -> pd.DataFrame:
     df = pd.read_excel(
         uploaded,
@@ -80,6 +94,7 @@ def resumen_desde_excel(uploaded) -> pd.DataFrame:
     comp_col  = _find_comp_col(cols)
     placa_col = next((orig for low,orig in cols.items() if "placa" in low), None)
     notif_col = _find_notif_col(cols)
+    impo_col  = _find_imposicion_col(cols)
 
     if comp_col is None:
         raise KeyError("No se encontró la columna de Número de Comparendo.")
@@ -92,13 +107,20 @@ def resumen_desde_excel(uploaded) -> pd.DataFrame:
     mask     = claves.astype(bool)
     df_valid = df.loc[mask]
 
-    resumen = pd.DataFrame({
+    resumen_data = {
         "id_key":      claves[mask],
         "comparendo":  raw_cmp[mask],
         "placa":       df_valid[placa_col].fillna("").str.strip() if placa_col else "",
         "fecha_notif": df_valid[notif_col].map(_fmt_date),
-    })
+    }
+    
+    # Añadir fecha de imposición si existe la columna
+    if impo_col:
+        resumen_data["fecha_imposicion"] = df_valid[impo_col].map(_fmt_date)
+    else:
+        resumen_data["fecha_imposicion"] = ""
 
+    resumen = pd.DataFrame(resumen_data)
     resumen["fuentes"] = [[]] * len(resumen)
     resumen["veces"]   = 0
     return resumen
