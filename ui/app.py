@@ -22,7 +22,6 @@ This app provides a web interface to:
 Usage:
     streamlit run ui/app.py
 """
-
 #!/usr/bin/env python3
 import sys
 import pathlib
@@ -50,6 +49,58 @@ from services.extractor     import compare
 from services.notif_changes import detect_notif_changes
 from services.writer        import build_excel
 
+def calcular_fechas_descuento(df, fecha_col="fecha_notif"):
+    """Calcula fechas de vencimiento para descuentos 50% y 25%"""
+    if df.empty or fecha_col not in df.columns:
+        return df
+    
+    df_copy = df.copy()
+    
+    # Filtrar solo las filas que tienen fecha válida
+    mask_fecha = df_copy[fecha_col].str.match(r'^\d{2}/\d{2}/\d{4}$', na=False)
+    df_con_fecha = df_copy[mask_fecha].copy()
+    
+    if df_con_fecha.empty:
+        return df_copy
+    
+    # Convertir a datetime
+    df_con_fecha["_dt"] = pd.to_datetime(
+        df_con_fecha[fecha_col],
+        format="%d/%m/%Y",
+        dayfirst=True
+    )
+    
+    # Cargar feriados de Colombia para los años involucrados
+    years = sorted(df_con_fecha["_dt"].dt.year.unique().tolist())
+    co_holidays = holidays.CountryHoliday("CO", years=years)
+    cbd = CustomBusinessDay(holidays=list(co_holidays.keys()))
+    
+    # Sumar días hábiles
+    df_con_fecha["Fecha 50% descuento"] = df_con_fecha["_dt"].apply(
+        lambda d: (d + 11 * cbd).strftime("%d/%m/%Y")
+    )
+    df_con_fecha["Fecha 25% descuento"] = df_con_fecha["_dt"].apply(
+        lambda d: (d + 26 * cbd).strftime("%d/%m/%Y")
+    )
+    
+    # Eliminar columna auxiliar
+    df_con_fecha.drop(columns=["_dt"], inplace=True)
+    
+    # Actualizar el DataFrame original
+    df_copy.loc[mask_fecha, "Fecha 50% descuento"] = df_con_fecha["Fecha 50% descuento"]
+    df_copy.loc[mask_fecha, "Fecha 25% descuento"] = df_con_fecha["Fecha 25% descuento"]
+    
+    # Llenar con vacío las filas sin fecha
+    if "Fecha 50% descuento" not in df_copy.columns:
+        df_copy["Fecha 50% descuento"] = ""
+    if "Fecha 25% descuento" not in df_copy.columns:
+        df_copy["Fecha 25% descuento"] = ""
+    
+    df_copy.loc[~mask_fecha, "Fecha 50% descuento"] = ""
+    df_copy.loc[~mask_fecha, "Fecha 25% descuento"] = ""
+    
+    return df_copy
+
 page_header(TITLE)
 
 blocks  = input_blocks(PLATFORMS)
@@ -70,35 +121,44 @@ if st.button("▶️ Procesar"):
     mask_fs = resumen_new["fuentes"].str.contains(r"\b(?:FENIX|SIMIT)\b", regex=True)
     res_fs  = resumen_new[mask_fs].copy()
 
-    # 4️⃣ Detectar “dato actualizado” y “modificado” en fecha_notif
+    # 4️⃣ Detectar "dato actualizado" y "modificado" en fecha_notif
     df_fecha = detect_notif_changes(resumen_old, res_fs)
 
-    # 5️⃣ Calcular fechas de vencimiento para descuentos (50% y 25%)
+    # 5️⃣ Calcular fechas de vencimiento para descuentos en cambios de fecha
     if not df_fecha.empty:
-        # Convertir a datetime
-        df_fecha["_dt"] = pd.to_datetime(
-            df_fecha["fecha_notif_new"],
-            format="%d/%m/%Y",
-            dayfirst=True
-        )
-        # Cargar feriados de Colombia para los años involucrados
-        years = sorted(df_fecha["_dt"].dt.year.unique().tolist())
-        co_holidays = holidays.CountryHoliday("CO", years=years)
-        cbd = CustomBusinessDay(holidays=list(co_holidays.keys()))
-        # Sumar días hábiles
-        df_fecha["venc_50"] = df_fecha["_dt"].apply(lambda d: (d + 11 * cbd).strftime("%d/%m/%Y"))
-        df_fecha["venc_25"] = df_fecha["_dt"].apply(lambda d: (d + 26 * cbd).strftime("%d/%m/%Y"))
-        # Eliminar columna auxiliar
-        df_fecha.drop(columns=["_dt"], inplace=True)
-        df_fecha.rename(columns={
-            "venc_50": "Fecha 50% descuento",
-            "venc_25": "Fecha 25% descuento"
-        }, inplace=True)
+        df_fecha = calcular_fechas_descuento(df_fecha, "fecha_notif_new")
+        # Renombrar las columnas para que sean más claras
+        df_fecha = df_fecha.rename(columns={
+            "fecha_notif_new": "fecha_notif_nueva"
+        })
+
+    # 6️⃣ Filtrar comparendos añadidos de SIMIT con fecha de notificación y calcular descuentos
+    df_add_simit = pd.DataFrame()
+    if not df_add.empty:
+        # Filtrar solo los de SIMIT que tienen fecha de notificación
+        mask_simit = df_add["fuentes"].str.contains(r"\bSIMIT\b", regex=True)
+        df_add_simit = df_add[mask_simit].copy()
+        
+        if not df_add_simit.empty and "fecha_notif" in df_add_simit.columns:
+            # Filtrar solo los que tienen fecha de notificación válida
+            mask_notif = df_add_simit["fecha_notif"].str.match(r'^\d{2}/\d{2}/\d{4}$', na=False)
+            df_add_simit = df_add_simit[mask_notif].copy()
+            
+            if not df_add_simit.empty:
+                df_add_simit = calcular_fechas_descuento(df_add_simit, "fecha_notif")
 
     # ── Presentación ────────────────────────────────────────────────────
     st.subheader("📋 Resumen de todos los comparendos detectados hoy")
+    
+    # Definir columnas a mostrar
+    columnas_mostrar = ["comparendo", "placa", "fuentes", "veces"]
+    if "fecha_imposicion" in resumen_new.columns:
+        columnas_mostrar.insert(-2, "fecha_imposicion")
+    if "fecha_notif" in resumen_new.columns:
+        columnas_mostrar.insert(-2, "fecha_notif")
+    
     st.dataframe(
-        resumen_new[["comparendo", "placa", "fuentes", "veces"]],
+        resumen_new[columnas_mostrar],
         use_container_width=True,
     )
 
@@ -107,6 +167,12 @@ if st.button("▶️ Procesar"):
     show_table("Añadidos",     df_add,  "➕")
     show_table("Eliminados",   df_del,  "➖")
 
+    # Mostrar comparendos nuevos de SIMIT con fechas de descuento
+    if not df_add_simit.empty:
+        st.subheader("🆕 Comparendos nuevos de SIMIT con fechas de descuento")
+        st.dataframe(df_add_simit, use_container_width=True)
+
+    # Mostrar cambios en fechas de notificación
     if not df_fecha.empty:
         show_table("Cambios en Fecha de notificación", df_fecha, "✏️")
 
@@ -119,7 +185,8 @@ if st.button("▶️ Procesar"):
             df_mant,
             df_add,
             df_del,
-            df_fecha if not df_fecha.empty else None
+            df_fecha if not df_fecha.empty else None,
+            df_add_simit if not df_add_simit.empty else None
         ),
         file_name="comparendos_resultado.xlsx",
     )
