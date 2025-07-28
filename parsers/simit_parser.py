@@ -6,10 +6,14 @@ SECTION = "SIMIT"
 
 # 1) ID al inicio de línea (17+ dígitos, opcional letra)
 _ID_LINE_RE        = re.compile(r"^\s*([A-Z]?\d{17,})\b")
-# 2) Captura la fecha de imposición en esa línea (no la usamos como notificación)
+# 2) Captura la fecha de imposición en esa línea
 _FECHA_IMPO_RE     = re.compile(r"Fecha\s+imposición:\s*([\d/]{10})", flags=re.I)
-# 3) Placa fallback si no la encontramos explícita
+# 3) Captura fecha de notificación (formato DD/MM/AAAA después de la fecha de imposición)
+_FECHA_NOTIF_RE    = re.compile(r"Fecha\s+imposición:\s*[\d/]{10}([\d/]{10})", flags=re.I)
+# 4) Placa fallback si no la encontramos explícita
 _PLATE_FALLBACK_RE = re.compile(r"\b([A-Z]{3}\d{3})\b")
+# 5) Formato de fecha válida DD/MM/AAAA
+_DATE_FORMAT_RE    = re.compile(r"^\d{2}/\d{2}/\d{4}$")
 
 def _iter_blocks(text: str):
     """
@@ -45,33 +49,56 @@ def parse(text: str):
       {
         "id": "<número de comparendo>",
         "placa": "<placa XXX999>",
-        "fecha_notif": "dd/mm/yyyy"    # AHORA sí la notificación
+        "fecha_imposicion": "dd/mm/yyyy",
+        "fecha_notif": "dd/mm/yyyy"
       }
     """
     for rid, buf in _iter_blocks(text):
-        placa       = ""
+        placa = ""
+        fecha_imposicion = ""
         fecha_notif = ""
 
-        # Buscamos la línea con "Fecha imposición"
+        # Buscamos en todas las líneas del bloque
+        full_text = " ".join(buf)
+        
+        # Buscar fecha de imposición
+        match_impo = _FECHA_IMPO_RE.search(full_text)
+        if match_impo:
+            fecha_imposicion = match_impo.group(1)
+        
+        # Buscar fecha de notificación usando el patrón mejorado
+        # Primero buscamos la línea que contiene "Fecha imposición"
         for line in buf:
             if "Fecha imposición" in line:
-                parts = line.split("\t")
-                # parts[0] incluye "Fecha imposición: dd/mm/yyyy"
-                # parts[1] es la fecha de NOTIFICACIÓN
-                if len(parts) >= 2:
-                    fecha_notif = parts[1].strip()
-                # parts[2] sería la placa
-                if len(parts) >= 3:
-                    placa = parts[2].strip()
+                # Extraemos todas las fechas de esta línea
+                fechas = re.findall(r'\d{2}/\d{2}/\d{4}', line)
+                if len(fechas) >= 1:
+                    fecha_imposicion = fechas[0]
+                if len(fechas) >= 2:
+                    fecha_notif = fechas[1]
+                
+                # Buscar placa en esta línea también
+                placa_match = _PLATE_FALLBACK_RE.search(line)
+                if placa_match:
+                    placa = placa_match.group(1)
                 break
 
-        # Si no hallamos placa así, fallback por regex
+        # Si no encontramos placa en la línea principal, buscar en todo el bloque
         if not placa:
             joined = "\n".join(buf)
-            placa = (_PLATE_FALLBACK_RE.search(joined) or [None, ""])[1]
+            placa_match = _PLATE_FALLBACK_RE.search(joined)
+            if placa_match:
+                placa = placa_match.group(1)
+
+        # Validar que las fechas tengan el formato correcto
+        if not _DATE_FORMAT_RE.match(fecha_imposicion):
+            fecha_imposicion = ""
+        if not _DATE_FORMAT_RE.match(fecha_notif):
+            fecha_notif = ""
 
         yield {
-            "id":          rid,
-            "placa":       placa,
+            "id": rid,
+            "placa": placa,
+            "fecha_imposicion": fecha_imposicion,
             "fecha_notif": fecha_notif,
         }
