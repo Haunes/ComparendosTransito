@@ -136,7 +136,7 @@ if st.button("▶️ Procesar"):
     if not df_add.empty and "fecha_notif" in df_add.columns:
         # Identificar filas de SIMIT con fecha de notificación válida
         mask_simit = df_add["fuentes"].str.contains(r"\bSIMIT\b", regex=True)
-        mask_notif = df_add["fecha_notif"].str.match(r'^\d{2}/\d{2}/\d{4}
+        mask_notif = df_add["fecha_notif"].str.match(r'^\d{2}/\d{2}/\d{4}')
 
     # ── Presentación ────────────────────────────────────────────────────
     st.subheader("📋 Resumen de todos los comparendos detectados hoy")
