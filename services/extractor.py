@@ -1,30 +1,3 @@
-"""
-services/extractor.py
-
-Provides functionality to build a temporary text file from raw text blocks
-and compare extracted comparendo data against a reference Excel dataset.
-
-Functions:
-  build_tmp_txt(blocks: dict[str, str]) -> pathlib.Path
-    Merge named text blocks into a single temporary .txt file, preserving
-    section headers for downstream parsing.
-
-  compare(blocks: dict[str, str], xls_old) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]
-    1. Builds a merged text file from the provided blocks.
-    2. Runs parsers on the text to produce 'detalle_new' (raw entries) and
-       'resumen_new' (aggregated summary) DataFrames.
-    3. Reads the previous day's summary ('resumen_old') from the given Excel.
-    4. Computes maintained, added, and deleted comparendos by comparing
-       ID keys between new and old summaries.
-    5. Returns a tuple:
-       - detalle_new: full parsed rows for today
-       - resumen_new: aggregated summary for today
-       - df_mant    : maintained comparendos
-       - df_add     : newly added comparendos
-       - df_del     : deleted comparendos
-"""
-
-
 # services/extractor.py
 import pathlib, io
 import pandas as pd
@@ -61,10 +34,18 @@ def compare(blocks: dict[str, str], xls_old) -> tuple[pd.DataFrame, pd.DataFrame
     )
 
     def _df(keys):
-        return pd.DataFrame({
-            "comparendo":[dict_info[k]["comparendo"] for k in keys],
-            "placa":     [dict_info[k]["placa"]      for k in keys],
-            "fuentes":   [dict_info[k]["fuentes"]    for k in keys],
-        })
+        data = {
+            "comparendo": [dict_info[k]["comparendo"] for k in keys],
+            "placa": [dict_info[k]["placa"] for k in keys],
+            "fuentes": [dict_info[k]["fuentes"] for k in keys],
+        }
+        
+        # Añadir fechas si están disponibles en dict_info
+        if keys and "fecha_imposicion" in dict_info[keys[0]]:
+            data["fecha_imposicion"] = [dict_info[k].get("fecha_imposicion", "") for k in keys]
+        if keys and "fecha_notif" in dict_info[keys[0]]:
+            data["fecha_notif"] = [dict_info[k].get("fecha_notif", "") for k in keys]
+            
+        return pd.DataFrame(data)
 
     return detalle_new, resumen_new, _df(comunes), _df(añadidos), _df(eliminados)
