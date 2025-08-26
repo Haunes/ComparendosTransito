@@ -31,7 +31,6 @@ def render_tabs_and_inputs() -> bool:
                 if st.button("Limpiar cuadro", key=f"clear_{p}"):
                     st.session_state[f"txt_{p}"] = ""
     return pressed
-
 def render_results_table(all_records, debug_text: str | None):
     st.header("📄 Hoy (tabla combinada)")
     if not all_records:
@@ -39,6 +38,12 @@ def render_results_table(all_records, debug_text: str | None):
         return
 
     df = pd.DataFrame(all_records)
+
+    # Asegurar columnas mínimas
+    for col in ["numero_comparendo", "fecha_imposicion", "fecha_notificacion", "plataforma", "placa"]:
+        if col not in df.columns:
+            df[col] = pd.NA
+
     df["numero_comparendo"] = df["numero_comparendo"].astype(str)
 
     def _pick_display(nums: pd.Series) -> str:
@@ -56,22 +61,28 @@ def render_results_table(all_records, debug_text: str | None):
 
     df["__key"] = df["numero_comparendo"].apply(_key_only_digits)
 
+    # Armamos el mapa de agregación solo con columnas existentes
+    agg_map = {
+        "numero_comparendo": _pick_display,
+        "fecha_imposicion": "first",
+        "fecha_notificacion": "first",
+        "plataforma": _agg_plats,
+    }
+    if "placa" in df.columns:
+        agg_map["placa"] = "first"
+
     agg = (
         df.sort_values(["__key"])
           .groupby("__key", as_index=False)
-          .agg({
-              "numero_comparendo": _pick_display,
-              "placa": "first",
-              "fecha_imposicion": "first",
-              "fecha_notificacion": "first",
-              "plataforma": _agg_plats,
-          })
+          .agg(agg_map)
           .rename(columns={"numero_comparendo":"numero", "plataforma":"plataformas"})
     )
-    # conteo de plataformas
+
+    # Conteo de plataformas por comparendo
     counts = (
         df.groupby(["__key"])["plataforma"].nunique().reset_index(name="plataformas_count")
     )
+
     out = agg.merge(counts, on="__key", how="left").drop(columns=["__key"])
     st.dataframe(out, use_container_width=True)
 

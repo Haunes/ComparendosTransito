@@ -28,6 +28,8 @@ if should_process:
         "CALI": st.session_state.get("txt_CALI", ""),
         "BOLIVAR": st.session_state.get("txt_BOLIVAR", ""),
         "SANTAMARTA": st.session_state.get("txt_SANTAMARTA", ""),
+        "MAGDALENA": st.session_state.get("txt_MAGDALENA", ""),  # <-- agregar
+        "SOLEDAD": st.session_state.get("txt_SOLEDAD", ""),      # <-- agregar
     }
     with st.spinner("Procesando texto de todas las pestañas..."):
         for platform, raw in inputs.items():
