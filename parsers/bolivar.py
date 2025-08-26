@@ -26,53 +26,37 @@ def _slice_blocks(text: str) -> List[str]:
     return blocks
 
 def _parse_block(block: str) -> Dict:
-    """
-    Esperado por bloque (líneas):
-      1) numero_comparendo
-      2) fecha (dd/mm/yyyy)
-      3) (opcional en blanco)
-      4) 'NO' o 'SI' (mandamiento pago)
-      5) total (con o sin '$', con puntos de miles)
-    """
-    lines = [ln.strip() for ln in block.split("\n") if ln.strip()]
-    out: Dict = {
-        "plataforma": "BOLIVAR",
-        "numero_comparendo": None,       # mostrar tal cual (con letra si existe)
-        "fecha_imposicion": None,        # usamos esta como 'fecha del comparendo'
-        "mandamiento_pago": None,        # 'NO'/'SI'
-        "valor": None,                   # alias de total
-        "valor_a_pagar": None,           # alias de total
+    # Limpieza de líneas
+    lines = [ln.strip() for ln in block.splitlines() if ln.strip()]  # <== aquí eliminas los vacíos
+
+    out = {
+        "numero_comparendo": None,
+        "fecha_imposicion": None,
+        "mandamiento_pago": None,
+        "total": None,
         "raw_block": block,
     }
     if not lines:
         return out
 
-    # 1) número (tal cual)
-    out["numero_comparendo"] = lines[0].strip()
+    # 1) número
+    out["numero_comparendo"] = lines[0]
 
-    # 2) fecha
+    # 2) fecha imposición (línea 2)
     if len(lines) > 1:
-        m = DATE_RE.search(lines[1])
-        if m:
-            out["fecha_imposicion"] = m.group(1)
+        out["fecha_imposicion"] = lines[1]
 
-    # 3) mandamiento pago ('NO'/'SI') y total
-    # Recorremos el resto buscando 'NO'/'SI' y primer monto
-    mand = None
-    total = None
-    for ln in lines[2:]:
-        s = ln.upper()
-        if mand is None and s in ("NO", "SI"):
-            mand = s
-            continue
-        if total is None:
-            mm = MONEY_RE.search(ln)
-            if mm:
-                total = _to_int_money(mm.group(1))
+    # 3) mandamiento pago (línea 3)
+    if len(lines) > 2:
+        out["mandamiento_pago"] = lines[2]
 
-    out["mandamiento_pago"] = mand
-    out["valor"] = total
-    out["valor_a_pagar"] = total
+    # 4) valor (línea 4)
+    if len(lines) > 3:
+        try:
+            out["total"] = float(lines[3].replace(".", "").replace(",", "."))
+        except:
+            out["total"] = lines[3]
+
     return out
 
 def parse_bolivar_text(raw_text: str) -> Tuple[List[Dict], str]:
