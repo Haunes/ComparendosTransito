@@ -2,69 +2,78 @@
 import re
 from typing import List, Dict, Tuple, Optional
 
-DATE_RE = re.compile(r"\b(\d{2}/\d{2}/\d{4})\b")
-MONEY_RE = re.compile(r"\$?\s*([\d\.]+)")
+NUM_RE   = re.compile(r"^\d{17,22}$")           # número de comparendo (solo dígitos, 17-22)
+DATE_RE  = re.compile(r"^\d{2}/\d{2}/\d{4}$")   # dd/mm/aaaa
+MAND_RE  = re.compile(r"^(NO|SI|SÍ)$", re.IGNORECASE)
+MONEY_RE = re.compile(r"^[\$\s]*[\d\.\,]+$")    # 603.930 | $ 603.930 | 603,930 (flexible)
 
-def _to_int_money(s: Optional[str]) -> Optional[int]:
+def _norm_money(s: str) -> Optional[int]:
     if not s:
         return None
-    return int(s.replace(".", "").replace(",", ""))
+    # quita $ y espacios, convierte 603.930 -> 603930 ; 603,930 -> 603930
+    v = s.replace("$", "").replace(" ", "").replace(".", "").replace(",", "")
+    return int(v) if v.isdigit() else None
 
-def _slice_blocks(text: str) -> List[str]:
-    lines = [ln.strip() for ln in text.replace("\r\n", "\n").replace("\r", "\n").split("\n")]
-    blocks = []
-    cur = []
-    for ln in lines:
-        if ln:
-            cur.append(ln)
-        else:
-            if cur:
-                blocks.append("\n".join(cur))
-                cur = []
-    if cur:
-        blocks.append("\n".join(cur))
-    return blocks
+def parse_bolivar_text(raw_text: str) -> Tuple[List[Dict], str]:
+    # normaliza saltos y elimina líneas totalmente vacías
+    text = raw_text.replace("\r\n", "\n").replace("\r", "\n")
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
 
-def _parse_block(block: str) -> Dict:
-    # Limpieza de líneas
-    lines = [ln.strip() for ln in block.splitlines() if ln.strip()]  # <== aquí eliminas los vacíos
+    records: List[Dict] = []
+    dbg: List[str] = []
 
-    out = {
+    current = {
         "numero_comparendo": None,
         "fecha_imposicion": None,
         "mandamiento_pago": None,
         "total": None,
-        "raw_block": block,
     }
-    if not lines:
-        return out
 
-    # 1) número
-    out["numero_comparendo"] = lines[0]
+    def _flush():
+        nonlocal current
+        if current["numero_comparendo"]:
+            # construir salida estándar
+            rec = {
+                "numero_comparendo": current["numero_comparendo"],
+                "fecha_imposicion": current["fecha_imposicion"],
+                "fecha_notificacion": None,       # Bolívar no la trae
+                "mandamiento_pago": current["mandamiento_pago"],
+                "total": _norm_money(current["total"]) if current["total"] else None,
+            }
+            records.append(rec)
+            dbg.append(
+                f"OK num={rec['numero_comparendo']} f_imp={rec['fecha_imposicion']} "
+                f"mand={rec['mandamiento_pago']} total={rec['total']}"
+            )
+        current = {"numero_comparendo": None, "fecha_imposicion": None, "mandamiento_pago": None, "total": None}
 
-    # 2) fecha imposición (línea 2)
-    if len(lines) > 1:
-        out["fecha_imposicion"] = lines[1]
+    for ln in lines:
+        if NUM_RE.match(ln):
+            # si ya había un registro en curso, ciérralo antes de empezar uno nuevo
+            if current["numero_comparendo"] or current["fecha_imposicion"] or current["mandamiento_pago"] or current["total"]:
+                _flush()
+            current["numero_comparendo"] = ln
+            continue
 
-    # 3) mandamiento pago (línea 3)
-    if len(lines) > 2:
-        out["mandamiento_pago"] = lines[2]
+        if current["numero_comparendo"] is None:
+            # ignora todo hasta ver un número válido
+            continue
 
-    # 4) valor (línea 4)
-    if len(lines) > 3:
-        try:
-            out["total"] = float(lines[3].replace(".", "").replace(",", "."))
-        except:
-            out["total"] = lines[3]
+        if current["fecha_imposicion"] is None and DATE_RE.match(ln):
+            current["fecha_imposicion"] = ln
+            continue
 
-    return out
+        if current["mandamiento_pago"] is None and MAND_RE.match(ln):
+            current["mandamiento_pago"] = ln.upper().replace("Í", "I")
+            continue
 
-def parse_bolivar_text(raw_text: str) -> Tuple[List[Dict], str]:
-    blocks = _slice_blocks(raw_text)
-    records, dbg = [], []
-    for i, blk in enumerate(blocks, start=1):
-        rec = _parse_block(blk)
-        rec["__block_idx"] = i
-        records.append(rec)
-        dbg.append(f"[B{i}] num={rec.get('numero_comparendo')} fecha={rec.get('fecha_imposicion')} total={rec.get('valor_a_pagar')} mando={rec.get('mandamiento_pago')}")
+        if current["total"] is None and MONEY_RE.match(ln):
+            current["total"] = ln
+            continue
+
+        # cualquier otra línea se ignora
+
+    # último registro pendiente
+    _flush()
+
     return records, "\n".join(dbg)
