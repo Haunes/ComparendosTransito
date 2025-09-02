@@ -350,3 +350,166 @@ def parse_platform(name: str, text: str) -> List[Record]:
     if not fn:
         return []
     return fn(text or "")
+
+
+
+
+
+
+# ===== Cobros coactivos SIMIT (detección automática dentro del mismo texto) =====
+import re
+from typing import List, Dict, Any
+
+# Patrones auxiliares
+_PLATE_INLINE_RE = re.compile(r"([A-Za-z]{3}\d{3}|[A-Za-z]{3}\d{2}[A-Za-z]|[A-Za-z]{2}\d{3}[A-Za-z])")
+_MONEY_RE = re.compile(r"\$\s*([\d\.\,]+)")
+_ALNUM_CODE_RE = re.compile(r"\b([A-Z]\d{1,2})\b", re.IGNORECASE)  # C29, C02, etc.
+
+def _to_iso_date_cc(s: str) -> str:
+    s = str(s).strip()
+    # dd/mm/yyyy
+    for fmt in ("%d/%m/%Y", "%d/%m/%y"):
+        try:
+            from datetime import datetime
+            return datetime.strptime(s, fmt).strftime("%Y-%m-%d")
+        except Exception:
+            pass
+    # intentar parseo automático de pandas
+    try:
+        import pandas as pd
+        return pd.to_datetime(s, errors="raise").strftime("%Y-%m-%d")
+    except Exception:
+        return s
+
+def _first_money_in(s: str) -> str:
+    m = _MONEY_RE.search(s or "")
+    if not m:
+        return ""
+    val = m.group(1).replace(" ", "")
+    # devuelve como cadena con $ y separador tal como vino (simple y legible)
+    return f"$ {val}"
+
+def _line_has_multa(s: str) -> bool:
+    return "multa" in (s or "").lower()
+
+def parse_simit_coactivos(text: str) -> List[Dict[str, Any]]:
+    """
+    Detecta bloques de 'Cobro Coactivo' dentro del texto de SIMIT.
+    Heurísticas:
+      - Una línea con solo dígitos de longitud 7 a 10 (p. ej. 202531224).
+      - En las ~3 líneas siguientes aparece 'Multa'.
+      - En las ~10 líneas siguientes aparece 'Fecha resolución:' (o 'Fecha resolucion:').
+      - A partir de ahí se extraen: fecha_resolucion, placa, organismo, código, estado, valores.
+    No se mezclan con el conteo normal.
+    """
+    if not text:
+        return []
+
+    lines = [l.strip() for l in text.splitlines()]
+    n = len(lines)
+    out: List[Dict[str, Any]] = []
+
+    i = 0
+    while i < n:
+        line = lines[i]
+        # Número corto (7-10 dígitos) para coactivo
+        if re.fullmatch(r"\d{7,10}", line or ""):
+            # ¿Hay 'Multa' cerca?
+            has_multa = any(_line_has_multa(lines[k]) for k in range(i + 1, min(i + 4, n)))
+            if not has_multa:
+                i += 1
+                continue
+
+            numero_coactivo = line
+            fecha_resolucion = ""
+            placa = ""
+            organismo = ""
+            codigo_infraccion = ""
+            estado = ""
+            valor = ""
+            interes = ""
+            valor_total = ""
+
+            # Escanear un bloque limitado de líneas (ventana acotada)
+            j_end = min(i + 20, n)
+            j = i + 1
+            while j < j_end:
+                li = lines[j]
+
+                # Fecha resolución + placa + organismo en la misma línea (separado por tabs o 2+ espacios)
+                if li.lower().startswith("fecha resolución:") or li.lower().startswith("fecha resolucion:"):
+                    tail = li.split(":", 1)[1].strip() if ":" in li else ""
+                    parts = re.split(r"\t+|\s{2,}", tail)
+                    # fecha (primera parte)
+                    if parts:
+                        fecha_resolucion = _to_iso_date_cc(parts[0].strip())
+                    # buscar placa en las partes y organismo en la última parte textual
+                    for p in parts[1:]:
+                        p = p.strip()
+                        mpla = _PLATE_INLINE_RE.search(p.replace(" ", "").upper())
+                        if mpla and not placa:
+                            placa = mpla.group(1).upper()
+                    # organismo: última parte que no sea 'No aplica' ni placa
+                    for p in reversed(parts[1:]):
+                        p = p.strip()
+                        if p.lower() == "no aplica":
+                            continue
+                        if placa and p.replace(" ", "").upper() == placa:
+                            continue
+                        if p:
+                            organismo = p
+                            break
+
+                # Código infracción posible (C29, C02, etc.)
+                if not codigo_infraccion:
+                    mcode = _ALNUM_CODE_RE.search(li)
+                    if mcode:
+                        codigo_infraccion = mcode.group(1).upper()
+
+                # Estado y valor (ej: "Pendiente de pago\t$ 603.939")
+                if not estado and ("pendiente" in li.lower() or "pago" in li.lower()):
+                    # tomamos lo que está antes del primer tab / o 2+ espacios como estado
+                    parts = re.split(r"\t+|\s{2,}", li)
+                    if parts:
+                        estado = parts[0].strip()
+                    # y un primer $ como valor
+                    v = _first_money_in(li)
+                    if v:
+                        valor = v
+
+                # Interés
+                if "interes" in li.lower() or "interés" in li.lower():
+                    inter = _first_money_in(li)
+                    if inter:
+                        interes = inter
+
+                # Valor total: preferimos un renglón que sea solo el monto grande
+                if not valor_total:
+                    m = _MONEY_RE.search(li)
+                    if m:
+                        # si la línea parece ser solo el monto o termina en monto, lo tomamos como total
+                        if re.fullmatch(r"\$?\s*[\d\.\,]+\s*", li) or li.strip().endswith(m.group(0)):
+                            valor_total = f"$ {m.group(1).replace(' ', '')}"
+
+                j += 1
+
+            out.append({
+                "numero_coactivo": numero_coactivo,
+                "fecha_resolucion": fecha_resolucion,
+                "placa": placa,
+                "organismo": organismo,
+                "codigo_infraccion": codigo_infraccion,
+                "estado": estado,
+                "valor": valor,
+                "interes": interes,
+                "valor_total": valor_total,
+                "plataforma": "SIMIT",
+            })
+
+            # Avanzar al final del bloque escaneado
+            i = j
+            continue
+
+        i += 1
+
+    return out

@@ -4,7 +4,7 @@ import pandas as pd
 from typing import Dict, List, Any
 from datetime import datetime
 
-from parsers import parse_platform, PARSERS
+from parsers import parse_platform, PARSERS, parse_simit_coactivos
 from aggregator import aggregate_by_comparendo
 from comparator import build_three_tables
 from export_utils import dfs_to_excel_bytes
@@ -30,7 +30,8 @@ def init_state():
         "df_today": pd.DataFrame(),
         "three_tables": None,
         "df_modificados": pd.DataFrame(),
-        "view_mode": "resumen"  # opciones: "resumen", "nuevos", "mantenidos", "eliminados", "modificados"
+        "view_mode": "resumen",  # opciones: "resumen", "nuevos", "mantenidos", "eliminados", "modificados",
+        "coactivos_simit": [],  # estado para cobros coactivos
     }
     if APP_KEY not in st.session_state or not isinstance(st.session_state[APP_KEY], dict):
         st.session_state[APP_KEY] = expected
@@ -81,6 +82,7 @@ def clear_all() -> None:
     st.session_state[APP_KEY]["three_tables"] = None
     st.session_state[APP_KEY]["df_modificados"] = pd.DataFrame()
     st.session_state[APP_KEY]["view_mode"] = "resumen"
+    st.session_state[APP_KEY]["coactivos_simit"] = []
 
 # -------------------- Proceso unificado --------------------
 def run_all() -> None:
@@ -89,6 +91,9 @@ def run_all() -> None:
         text = st.session_state[APP_KEY]["inputs"][name]
         rows = parse_platform(name, text)
         st.session_state[APP_KEY]["rows_by_platform"][name] = rows
+        if name == "SIMIT":
+            coactivos = parse_simit_coactivos(text)
+            st.session_state[APP_KEY]["coactivos_simit"] = coactivos
 
     # 2) Backfill si marcaste caídas y cargaste Resumen AYER (hoja 1)
     df_prev = st.session_state[APP_KEY]["yesterday_summary_df"]
@@ -263,6 +268,15 @@ def main():
 
     st.markdown("---")
 
+    # === 2.5) Cobros coactivos (SIMIT) ===
+    coact_list = st.session_state[APP_KEY].get("coactivos_simit", [])
+    if coact_list:  # Solo mostrar si hay cobros coactivos
+        render_section_header("⚖️ Cobros Coactivos (SIMIT)")
+        co_cols = ["numero_coactivo","fecha_resolucion","placa","organismo","codigo_infraccion","estado","valor","interes","valor_total","plataforma"]
+        df_coact = pd.DataFrame(coact_list, columns=co_cols)
+        st.dataframe(df_coact, use_container_width=True, height=300)
+        st.markdown("---")
+
     # === 3) Conteo ===
     render_section_header("📊 Resumen de Conteo")
     
@@ -340,6 +354,14 @@ def main():
 
             if isinstance(df_mod, pd.DataFrame) and not df_mod.empty:
                 sheets["Modificados"] = df_mod
+
+            # Agregar cobros coactivos al Excel si existen
+            coact_list = st.session_state[APP_KEY].get("coactivos_simit", [])
+            if coact_list:
+                co_cols = ["numero_coactivo","fecha_resolucion","placa","organismo","codigo_infraccion","estado","valor","interes","valor_total","plataforma"]
+                df_coact = pd.DataFrame(coact_list, columns=co_cols)
+                if not df_coact.empty:
+                    sheets["Cobros coactivos"] = df_coact
 
             if sheets:
                 ts = datetime.now().strftime("%Y%m%d_%H%M%S")
