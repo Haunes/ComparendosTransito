@@ -1,0 +1,9 @@
+__pycache__/
+*/__pycache__/
+
+# Ignorar todo lo que esté en la carpeta tests
+tests/
+
+# Ignorar archivos de cobertura
+.coverage
+.coveragerc

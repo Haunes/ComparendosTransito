@@ -1,364 +1,247 @@
-# comparator.py
-import pandas as pd
-import numpy as np
+from __future__ import annotations
 import re
-from typing import Dict, Tuple, Optional
-import holidays
+import pandas as pd
+from typing import Tuple, List, Dict, Any, Set
+from datetime import datetime
+from aggregator import canonical_num  # solo dígitos
+from collections import defaultdict
 
-# --- Helpers fechas y columnas ---
+# -------------------- Regex auxiliares --------------------
+_PLATE_INLINE_RE = re.compile(
+    r"([A-Za-z]{3}\d{3}|[A-Za-z]{3}\d{2}[A-Za-z]|[A-Za-z]{2}\d{3}[A-Za-z])"
+)
+_DATE_INLINE_RE = re.compile(r"\b(\d{1,2}/\d{1,2}/\d{2,4})\b")
+_ALNUM_TOKEN_RE = re.compile(r"[A-Za-z0-9]{11,}")
 
-def _to_date(s: pd.Series) -> pd.Series:
-    return pd.to_datetime(s, errors="coerce", dayfirst=True)
+# -------------------- Utils --------------------
 
-# --- Calendario hábil Colombia ---
-
-def _co_holidays_for_years(years):
-    co = holidays.Colombia(years=years)
-    return np.array(sorted(co.keys()), dtype="datetime64[D]")
-
-def _busday_add_co(date: pd.Timestamp, n: int) -> pd.Timestamp:
-    if pd.isna(date):
-        return pd.NaT
-    years = range(date.year - 1, date.year + 3)
-    hols = _co_holidays_for_years(years)
-    d = np.datetime64(date.date(), "D")
-    out = np.busday_offset(d, n, roll="forward", holidays=hols)
-    return pd.Timestamp(out)
-
-# --- Carga de Excel AYER (fila de encabezados variable; usa columna I para notificación) ---
-
-def load_yesterday_excel(xlsx_path_or_file, sheet_name: str = "COMPARENDOS") -> pd.DataFrame:
+def _platforms_map_from_summary(df_prev_summary: pd.DataFrame) -> Dict[str, str]:
     """
-    Lee el Excel de 'ayer' detectando encabezados; la fecha de notificación se toma explícitamente de la columna I.
-    Acepta ruta, archivo subido o ExcelFile.
-    Devuelve columnas: numero_comparendo, fecha_imposicion, fecha_notificacion
+    Construye un mapa: clave_canónica -> 'Plataforma1-Plataforma2-...'
+    a partir del DataFrame normalizado del Resumen de AYER (una fila por plataforma).
     """
-    import unicodedata
-
-    def _norm(s: str) -> str:
-        if s is None or (isinstance(s, float) and pd.isna(s)):
-            s = ""
-        s = str(s).strip().lower()
-        s = "".join(ch for ch in unicodedata.normalize("NFD", s) if unicodedata.category(ch) != "Mn")
+    if df_prev_summary is None or df_prev_summary.empty:
+        return {}
+    acc: Dict[str, Set[str]] = defaultdict(set)
+    for _, r in df_prev_summary.iterrows():
+        num = str(r.get("numero_comparendo", "")).strip()
+        key = canonical_num(num)
+        if not key:
+            continue
+        plat = str(r.get("plataforma", "")).strip()
+        if not plat:
+            continue
+        acc[key].add(plat)
+    # join estable por orden alfabético (insensible a mayúsculas)
+    return {k: "-".join(sorted(list(v), key=str.lower)) for k, v in acc.items()}
+def _to_str_date_like(v: Any) -> str:
+    if pd.isna(v):
+        return ""
+    if isinstance(v, (pd.Timestamp, datetime)):
+        return v.strftime("%Y-%m-%d")
+    s = str(v).strip()
+    for fmt in ("%d/%m/%Y", "%d/%m/%y"):
+        try:
+            return datetime.strptime(s, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            pass
+    try:
+        return pd.to_datetime(s, errors="raise").strftime("%Y-%m-%d")
+    except Exception:
         return s
 
-    # leer sin header para detectar fila
-    raw = pd.read_excel(xlsx_path_or_file, sheet_name=sheet_name, header=None, dtype=str)
+def _find_plate_in_row(row_vals: List[str]) -> str:
+    for raw in row_vals:
+        if not raw or str(raw).lower() in ("nan", "none"):
+            continue
+        s = re.sub(r"[\s\-]", "", str(raw).upper())
+        m = _PLATE_INLINE_RE.search(s)
+        if m:
+            return m.group(1).upper()
+    return ""
 
-    # detectar fila de encabezado por presencia de "numero" y "comparendo"
-    header_row = None
-    for i in range(min(60, len(raw))):
-        row_norm = [_norm(v) for v in raw.iloc[i].tolist()]
-        joined = " | ".join(row_norm)
-        if "numero" in joined and "comparendo" in joined:
-            header_row = i
-            break
-    if header_row is None:
-        header_row = 6  # fallback típico cuando empieza en C7
-
-    header = raw.iloc[header_row].astype(str).tolist()
-    df = raw.iloc[header_row + 1:].copy()
-    df.columns = [str(c).strip() for c in header]
-    df = df.dropna(axis=1, how="all")
-
-    # localizar columnas
-    cols_norm = {_norm(c): c for c in df.columns}
-
-    def _find_col_by_keywords(*keywords) -> str:
-        kw = [_norm(k) for k in keywords]
-        for norm_name, real in cols_norm.items():
-            if all(k in norm_name for k in kw):
-                return real
-        for norm_name, real in cols_norm.items():
-            if any(k in norm_name for k in kw):
-                return real
-        raise KeyError(f"No encontré una columna que parezca {keywords} en {list(df.columns)}")
-
-    col_num = _find_col_by_keywords("numero","comparendo")
-    try:
-        col_f_imp = _find_col_by_keywords("fecha","comparendo")
-    except KeyError:
-        col_f_imp = _find_col_by_keywords("fecha","imposicion")
-
-    # Columna I explícita para notificación (índice 8) + fallback por nombre
-    if df.shape[1] > 8:
-        serie_f_notif = df.iloc[:, 8]
-    else:
-        serie_f_notif = df[_find_col_by_keywords("fecha","notificacion")]
-
-    out = pd.DataFrame({
-        "numero_comparendo": df[col_num].astype(str).str.strip(),
-        "fecha_imposicion": _to_date(df[col_f_imp]),
-        "fecha_notificacion": _to_date(serie_f_notif),
-    })
-
-    out["numero_comparendo"] = (
-        out["numero_comparendo"].replace({r"^\s*(nan|none|null|-)?\s*$": pd.NA}, regex=True)
-    )
-    out = out[out["numero_comparendo"].notna()].reset_index(drop=True)
+def _find_dates_in_row(row_vals: List[str]) -> List[str]:
+    out: List[str] = []
+    for raw in row_vals:
+        if not raw:
+            continue
+        for m in _DATE_INLINE_RE.findall(str(raw)):
+            out.append(_to_str_date_like(m))
     return out
 
-# --- Preparación de HOY (registros crudos de parsers) ---
-
-def prepare_today_df(df_today_raw: pd.DataFrame) -> pd.DataFrame:
-    if df_today_raw is None or df_today_raw.empty:
-        return pd.DataFrame(columns=["numero_comparendo","fecha_imposicion","fecha_notificacion","plataforma"])
-    df = df_today_raw.copy()
-    if "fecha_imposicion" in df.columns:
-        df["fecha_imposicion"] = _to_date(df["fecha_imposicion"])
-    else:
-        df["fecha_imposicion"] = pd.NaT
-    if "fecha_notificacion" in df.columns:
-        df["fecha_notificacion"] = _to_date(df["fecha_notificacion"])
-    else:
-        df["fecha_notificacion"] = pd.NaT
-    if "plataforma" not in df.columns:
-        df["plataforma"] = pd.NA
-    return df[["numero_comparendo","fecha_imposicion","fecha_notificacion","plataforma"]].copy()
-
-# --- Comparador con memoria (LAST_SEEN) y caídas manuales ---
-
-def compare_today_vs_yesterday(
-    df_today_raw: pd.DataFrame,
-    df_yesterday: pd.DataFrame,
-    prev_last_seen: Optional[pd.DataFrame] = None,   # hoja LAST_SEEN del paquete anterior (opcional)
-    manual_down_today: Optional[set[str]] = None,    # plataformas caídas marcadas manualmente
-    grace_days: int = 2
-) -> tuple[Dict[str, pd.DataFrame], Dict, pd.DataFrame]:
+def _iter_comparendos_in_cell(cell_text: str):
     """
-    Devuelve (resultados, meta_out, last_seen_out)
-    - resultados: dict con DataFrames 'nuevos','eliminados','mantenidos','modificados'
-    - meta_out: {'grace_days': int, 'active_platforms': [...]}
-    - last_seen_out: DataFrame actualizado (persistir como hoja LAST_SEEN)
+    - Normaliza removiendo espacios, guiones, puntos, slashes, underscores, etc.
+    - Busca tokens alfanuméricos y filtra los que tengan >=11 dígitos.
     """
-    ORDER = ["SIMIT","FENIX","MEDELLIN","BELLO","ITAGUI","MANIZALES","CALI",
-             "BOLIVAR","SANTAMARTA","MAGDALENA","SOLEDAD"]
-    LABEL = {
-        "SIMIT":"Simit","FENIX":"Fenix","MEDELLIN":"Medellin","BELLO":"Bello","ITAGUI":"Itagui",
-        "MANIZALES":"Manizales","CALI":"Cali","BOLIVAR":"Bolivar","SANTAMARTA":"Santa Marta",
-        "MAGDALENA":"Magdalena","SOLEDAD":"Soledad"
-    }
+    if not cell_text:
+        return
+    s = str(cell_text)
+    s = re.sub(r"[\s\.\-_/]", "", s)  # <--- normalización importante
+    for m in _ALNUM_TOKEN_RE.finditer(s):
+        tok = m.group(0)
+        if sum(ch.isdigit() for ch in tok) >= 11:
+            yield tok
 
-    def _clean_num_series(s: pd.Series) -> pd.Series:
-        return s.astype(str).str.strip().replace({r"^\s*(nan|none|null|-)?\s*$": pd.NA}, regex=True)
+# -------------------- Extracción AYER --------------------
+def extract_comparendos_rowwise_with_dates(
+    df_yesterday_any: pd.DataFrame,
+    date_imp_col_idx: int = 7,
+    date_notif_col_idx: int = 8,
+    plate_col_idx: int = 1,
+    header_row_excel_1based: int = 7,
+) -> Tuple[Dict[str,str], set, Dict[str, Dict[str,str]]]:
+    y_original: Dict[str, str] = {}
+    yesterday_set = set()
+    y_data: Dict[str, Dict[str, str]] = {}
 
-    def _key_only_digits(s: pd.Series) -> pd.Series:
-        return s.fillna("").astype(str).apply(lambda x: re.sub(r"\D", "", x))
+    n_rows, n_cols = df_yesterday_any.shape if isinstance(df_yesterday_any, pd.DataFrame) else (0, 0)
+    data_start_idx = header_row_excel_1based
 
-    def _pick_display_num(nums: pd.Series) -> str:
-        vals = [str(v) for v in nums.dropna().tolist()]
-        with_letter = [v for v in vals if re.search(r"[A-Za-z]", v)]
-        return with_letter[0] if with_letter else (vals[0] if vals else None)
+    for i in range(min(data_start_idx, n_rows), n_rows):
+        row_vals = df_yesterday_any.iloc[i, :].astype(str).str.strip().tolist()
 
-    def _agg_platforms_pretty(s: pd.Series) -> str:
-        vals = [str(v).upper() for v in s.dropna()]
-        out = [LABEL[p] for p in ORDER if p in vals]
-        return " - ".join(out) if out else None
+        comps_in_row: List[str] = []
+        for v in row_vals:
+            if not v or v.lower() in ("nan", "none"):
+                continue
+            for token in _iter_comparendos_in_cell(v):
+                comps_in_row.append(token)
 
-    # helpers fechas límite (hábiles CO)
-    def _f50(d):  # hasta el día 11 hábil siguiente
-        return _busday_add_co(d, 11) if pd.notna(d) else pd.NaT
-    def _f25(d):  # hasta el día 26 hábil siguiente
-        return _busday_add_co(d, 26) if pd.notna(d) else pd.NaT
+        if not comps_in_row:
+            continue
 
-    # preparar data
-    df_hoy = prepare_today_df(df_today_raw)
-    df_ayer = df_yesterday[["numero_comparendo","fecha_imposicion","fecha_notificacion"]].copy()
+        imp_ayer = _to_str_date_like(df_yesterday_any.iat[i, date_imp_col_idx]) if date_imp_col_idx < n_cols else ""
+        notif_ayer = _to_str_date_like(df_yesterday_any.iat[i, date_notif_col_idx]) if date_notif_col_idx < n_cols else ""
 
-    df_hoy["numero_comparendo"] = _clean_num_series(df_hoy["numero_comparendo"])
-    df_ayer["numero_comparendo"] = _clean_num_series(df_ayer["numero_comparendo"])
-    df_hoy = df_hoy[df_hoy["numero_comparendo"].notna()].copy()
-    df_ayer = df_ayer[df_ayer["numero_comparendo"].notna()].copy()
+        if not imp_ayer or not notif_ayer:
+            dates_inline = _find_dates_in_row(row_vals)
+            if not imp_ayer and len(dates_inline) >= 1:
+                imp_ayer = dates_inline[0]
+            if not notif_ayer and len(dates_inline) >= 2:
+                notif_ayer = dates_inline[1]
 
-    df_hoy["__key"] = _key_only_digits(df_hoy["numero_comparendo"])
-    df_ayer["__key"] = _key_only_digits(df_ayer["numero_comparendo"])
-    df_hoy["plat_code"] = df_hoy["plataforma"].astype(str).str.upper()
+        placa_ayer = ""
+        if plate_col_idx < n_cols:
+            val = df_yesterday_any.iat[i, plate_col_idx]
+            if not pd.isna(val):
+                placa_ayer = re.sub(r"[\s\-]", "", str(val).upper()).strip()
+        if not placa_ayer:
+            placa_ayer = _find_plate_in_row(row_vals)
 
-    active_today = set(df_hoy["plat_code"].dropna().unique())
-    manual_down_today = set([p.upper() for p in (manual_down_today or set())])
+        for val in comps_in_row:
+            key = canonical_num(val)  # solo dígitos
+            if not key:
+                continue
+            yesterday_set.add(key)
+            if key not in y_original:
+                y_original[key] = val
+            if key not in y_data:
+                y_data[key] = {
+                    "imp_ayer": imp_ayer,
+                    "notif_ayer": notif_ayer,
+                    "placa_ayer": placa_ayer,
+                }
 
-    # LAST_SEEN previo
-    prev_last_seen = prev_last_seen if (prev_last_seen is not None and not prev_last_seen.empty) else pd.DataFrame()
-    if not prev_last_seen.empty:
-        if "__key" not in prev_last_seen.columns and "key" in prev_last_seen.columns:
-            prev_last_seen = prev_last_seen.rename(columns={"key":"__key"})
-        for col in ["__key","numero_display","last_seen_platforms_codes","last_seen_date"]:
-            if col not in prev_last_seen.columns:
-                prev_last_seen[col] = pd.NA
-        prev_last_seen["__key"] = prev_last_seen["__key"].astype(str)
+    return y_original, yesterday_set, y_data
 
-    def _split_codes(x):
-        return set([c.strip().upper() for c in str(x).split(",") if c.strip()])
+# -------------------- HOY --------------------
+def _today_key_set(df_today: pd.DataFrame) -> Tuple[set, Dict[str, Dict[str,str]]]:
+    tset = set()
+    tdata: Dict[str, Dict[str,str]] = {}
+    if df_today is None or df_today.empty:
+        return tset, tdata
 
-    last_seen_map = {}
-    last_seen_date_map = {}
-    if not prev_last_seen.empty:
-        last_seen_map = dict(zip(
-            prev_last_seen["__key"],
-            prev_last_seen["last_seen_platforms_codes"].apply(_split_codes)
-        ))
-        last_seen_date_map = dict(zip(
-            prev_last_seen["__key"],
-            pd.to_datetime(prev_last_seen["last_seen_date"], errors="coerce")
-        ))
+    for _, r in df_today.iterrows():
+        num = str(r.get("numero_comparendo", "")).strip()
+        key = canonical_num(num)  # solo dígitos (coherente con AYER)
+        if not key:
+            continue
+        tset.add(key)
+        if key not in tdata:
+            tdata[key] = {
+                "numero_comparendo": num,
+                "fecha_imposicion": str(r.get("fecha_imposicion", "")).strip(),
+                "fecha_notificacion": str(r.get("fecha_notificacion", "")).strip(),
+                "placa": str(r.get("placa", "")).strip(),
+                "plataformas": str(r.get("plataformas", r.get("plataforma",""))).strip(),
+                "numero_veces": r.get("numero_veces",""),
+            }
+    return tset, tdata
 
-    set_hoy  = set(df_hoy["__key"])
-    set_ayer = set(df_ayer["__key"])
+# -------------------- Construcción de tablas --------------------
+def build_three_tables(
+    df_today: pd.DataFrame,
+    df_yesterday_any: pd.DataFrame,
+    date_imp_col_idx: int = 7,
+    date_notif_col_idx: int = 8,
+    plate_col_idx: int = 1,
+    header_row_excel_1based: int = 7,
+    df_prev_summary: pd.DataFrame | None = None,
+) -> Dict[str, pd.DataFrame]:
+    y_original, yesterday_set, y_data = extract_comparendos_rowwise_with_dates(
+        df_yesterday_any,
+        date_imp_col_idx=date_imp_col_idx,
+        date_notif_col_idx=date_notif_col_idx,
+        plate_col_idx=plate_col_idx,
+        header_row_excel_1based=header_row_excel_1based,
+    )
+    platmap_ayer: Dict[str, str] = _platforms_map_from_summary(df_prev_summary) if df_prev_summary is not None else {}
 
-    nuevos_keys     = set_hoy - set_ayer
-    eliminados_keys = set_ayer - set_hoy
-    comunes_keys    = set_hoy & set_ayer
+    today_set, today_map = _today_key_set(df_today)
 
-    # ========================
-    # NUEVOS (+ fechas límite)
-    # ========================
-    nuevos_raw = df_hoy[df_hoy["__key"].isin(nuevos_keys)].copy()
-    nuevos = (
-        nuevos_raw.sort_values(["__key"])
-        .groupby("__key", as_index=False)
-        .agg({
-            "numero_comparendo": _pick_display_num,
-            "fecha_imposicion": "first",
-            "fecha_notificacion": "first",
-            "plataforma": _agg_platforms_pretty,
+    nuevos     = sorted(today_set - yesterday_set)
+    eliminados = sorted(yesterday_set - today_set)
+    mantenidos = sorted(today_set & yesterday_set)
+
+    cols = ["numero_comparendo","fecha_imposicion","fecha_notificacion","placa","plataformas","numero_veces","estado"]
+    rows_nuevos, rows_mant, rows_elim = [], [], []
+
+    for k in nuevos:
+        t = today_map.get(k, {})
+        rows_nuevos.append({
+            "numero_comparendo": t.get("numero_comparendo",""),
+            "fecha_imposicion": t.get("fecha_imposicion",""),
+            "fecha_notificacion": t.get("fecha_notificacion",""),
+            "placa": t.get("placa",""),
+            "plataformas": t.get("plataformas",""),
+            "numero_veces": t.get("numero_veces",""),
+            "estado": "NUEVO",
         })
-        .rename(columns={"plataforma":"plataformas"})
-        .loc[:,["numero_comparendo","fecha_imposicion","fecha_notificacion","plataformas"]]
-        .reset_index(drop=True)
-    )
-    # >>> aquí se agregan las columnas pedidas <<<
-    nuevos["fecha_limite_50"] = nuevos["fecha_notificacion"].apply(_f50)
-    nuevos["fecha_limite_25"] = nuevos["fecha_notificacion"].apply(_f25)
-    # ordenar columnas (opcional)
-    nuevos = nuevos[[
-        "numero_comparendo","fecha_imposicion","fecha_notificacion",
-        "plataformas","fecha_limite_50","fecha_limite_25"
-    ]]
 
-    # ELIMINADOS con filtro manual + LAST_SEEN
-    eliminados_raw = df_ayer[df_ayer["__key"].isin(eliminados_keys)].copy()
-    if not prev_last_seen.empty and manual_down_today:
-        today = pd.Timestamp.today().normalize()
-        def _keep_row(row) -> bool:
-            key = row["__key"]
-            prev_plats = last_seen_map.get(key, set())
-            if prev_plats and prev_plats.issubset(manual_down_today):
-                last_dt = last_seen_date_map.get(key, pd.NaT)
-                if pd.isna(last_dt):
-                    return False
-                days_gap = (today - last_dt.normalize()).days
-                return days_gap > grace_days
-            return True
-        eliminados_raw = eliminados_raw[eliminados_raw.apply(_keep_row, axis=1)].copy()
-
-    eliminados = (
-        eliminados_raw.sort_values(["__key"])
-        .groupby("__key", as_index=False)
-        .agg({
-            "numero_comparendo": _pick_display_num,
-            "fecha_imposicion": "first",
-            "fecha_notificacion": "first",
+    for k in mantenidos:
+        t = today_map.get(k, {})
+        rows_mant.append({
+            "numero_comparendo": t.get("numero_comparendo",""),
+            "fecha_imposicion": t.get("fecha_imposicion",""),
+            "fecha_notificacion": t.get("fecha_notificacion",""),
+            "placa": t.get("placa",""),
+            "plataformas": t.get("plataformas",""),
+            "numero_veces": t.get("numero_veces",""),
+            "estado": "MANTENIDO",
         })
-        .loc[:,["numero_comparendo","fecha_imposicion","fecha_notificacion"]]
-        .reset_index(drop=True)
-    )
 
-    # MANTENIDOS
-    mantenidos_raw = df_hoy[df_hoy["__key"].isin(comunes_keys)].copy()
-    mantenidos = (
-        mantenidos_raw.sort_values(["__key"])
-        .groupby("__key", as_index=False)
-        .agg({
-            "numero_comparendo": _pick_display_num,
-            "fecha_imposicion": "first",
-            "fecha_notificacion": "first",
-            "plataforma": _agg_platforms_pretty,
+    for k in eliminados:
+        orig = y_original.get(k, k)
+        d = y_data.get(k, {})
+        rows_elim.append({
+            "numero_comparendo": orig,
+            "fecha_imposicion": d.get("imp_ayer",""),
+            "fecha_notificacion": d.get("notif_ayer",""),
+            "placa": d.get("placa_ayer",""),
+            "plataformas": platmap_ayer.get(k, ""),
+            "plataformas": "",
+            "numero_veces": "",
+            "estado": "ELIMINADO",
         })
-        .rename(columns={"plataforma":"plataformas"})
-        .loc[:,["numero_comparendo","fecha_imposicion","fecha_notificacion","plataformas"]]
-        .reset_index(drop=True)
-    )
 
-    # MODIFICADOS (solo SIMIT)
-    simit_hoy = (
-        df_hoy[(df_hoy["__key"].isin(comunes_keys)) & (df_hoy["plat_code"]=="SIMIT")]
-        .sort_values(["__key"])
-        .groupby("__key", as_index=False)
-        .agg({"numero_comparendo": _pick_display_num, "fecha_notificacion":"first"})
-        .rename(columns={"fecha_notificacion":"fecha_notif_hoy"})
-    )
-    base_ayer = (
-        df_ayer[df_ayer["__key"].isin(comunes_keys)]
-        .sort_values(["__key"])
-        .groupby("__key", as_index=False)
-        .agg({"numero_comparendo": _pick_display_num, "fecha_notificacion":"first"})
-        .rename(columns={"fecha_notificacion":"fecha_notif_ayer"})
-    )
-    cmp = pd.merge(base_ayer, simit_hoy, on="__key", how="inner", suffixes=("_ayer_num","_hoy_num"))
+    df_nuevos = pd.DataFrame(rows_nuevos, columns=cols)
+    df_mant   = pd.DataFrame(rows_mant,   columns=cols)
+    df_elim   = pd.DataFrame(rows_elim,   columns=cols)
 
-    def _status(row):
-        hoy = row["fecha_notif_hoy"]; ayer = row["fecha_notif_ayer"]
-        if pd.isna(ayer) and pd.notna(hoy): return "actualizada"
-        if pd.notna(ayer) and pd.notna(hoy) and hoy.normalize()!=ayer.normalize(): return "modificada"
-        return None
+    for dfx in (df_nuevos, df_mant, df_elim):
+        if not dfx.empty:
+            dfx.sort_values(["numero_comparendo"], kind="stable", inplace=True)
+            dfx.reset_index(drop=True, inplace=True)
 
-    cmp["estado_notif"] = cmp.apply(_status, axis=1)
-    modificados = cmp[cmp["estado_notif"].notna()].copy()
-
-    modificados["fecha_limite_50"] = modificados["fecha_notif_hoy"].apply(_f50)
-    modificados["fecha_limite_25"] = modificados["fecha_notif_hoy"].apply(_f25)
-
-    def _disp_num(row):
-        return _pick_display_num(pd.Series([row.get("numero_comparendo_ayer_num"), row.get("numero_comparendo_hoy_num")]))
-    modificados["numero_comparendo"] = modificados.apply(_disp_num, axis=1)
-
-    modificados = modificados[[
-        "numero_comparendo","fecha_notif_ayer","fecha_notif_hoy",
-        "estado_notif","fecha_limite_50","fecha_limite_25"
-    ]].sort_values("numero_comparendo").reset_index(drop=True)
-
-    # LAST_SEEN actualizado
-    today = pd.Timestamp.today().normalize()
-    today_map = (
-        df_hoy.groupby("__key")
-        .agg(num_disp=("numero_comparendo", _pick_display_num),
-             plats=("plat_code", lambda s: set([p for p in s.dropna()])))
-        .reset_index()
-    )
-    rows = []
-    for _, r in today_map.iterrows():
-        codes = sorted(list(r["plats"]))
-        rows.append({
-            "__key": r["__key"],
-            "numero_display": r["num_disp"],
-            "last_seen_platforms": " - ".join([LABEL[c] for c in ORDER if c in codes]) if codes else None,
-            "last_seen_platforms_codes": ",".join(codes),
-            "last_seen_date": today,
-        })
-    df_today_seen = pd.DataFrame(rows)
-
-    if prev_last_seen is None or prev_last_seen.empty:
-        last_seen_out = df_today_seen
-    else:
-        last_seen_out = prev_last_seen.copy()
-        if "__key" not in last_seen_out.columns:
-            last_seen_out["__key"] = last_seen_out.get("key", pd.Series(dtype=str))
-        last_seen_out = last_seen_out.set_index("__key")
-        df_today_seen = df_today_seen.set_index("__key")
-        last_seen_out.update(df_today_seen)
-        new_keys = df_today_seen.index.difference(last_seen_out.index)
-        if len(new_keys) > 0:
-            last_seen_out = pd.concat([last_seen_out, df_today_seen.loc[new_keys]], axis=0)
-        last_seen_out = last_seen_out.reset_index()
-
-    meta_out = {
-        "grace_days": int(grace_days),
-        "active_platforms": sorted(list(active_today)),
-    }
-
-    return {
-        "nuevos": nuevos,
-        "eliminados": eliminados,
-        "mantenidos": mantenidos,
-        "modificados": modificados,
-    }, meta_out, last_seen_out
+    return {"NUEVOS": df_nuevos, "MANTENIDOS": df_mant, "ELIMINADOS": df_elim}
