@@ -70,6 +70,10 @@ def clear_platform(platform: str) -> None:
     st.session_state[APP_KEY]["inputs"][platform] = ""
     st.session_state[APP_KEY]["rows_by_platform"][platform] = []
     st.session_state[APP_KEY]["platform_down"][platform] = False
+    # Limpiar widget si existe
+    wkey = f"input_{platform}"
+    if wkey in st.session_state:
+        st.session_state[wkey] = ""
 
 def clear_all() -> None:
     st.session_state[APP_KEY]["inputs"] = {p: "" for p in PLATFORMS}
@@ -83,6 +87,11 @@ def clear_all() -> None:
     st.session_state[APP_KEY]["df_modificados"] = pd.DataFrame()
     st.session_state[APP_KEY]["view_mode"] = "resumen"
     st.session_state[APP_KEY]["coactivos_simit"] = []
+    # Limpiar widgets de texto
+    for p in PLATFORMS:
+        wkey = f"input_{p}"
+        if wkey in st.session_state:
+            st.session_state[wkey] = ""
 
 # -------------------- Proceso unificado --------------------
 def run_all() -> None:
@@ -179,14 +188,15 @@ def platform_tab_ui(name: str) -> None:
     
     # Área de texto
     txt_key = f"input_{name}"
+    if txt_key not in st.session_state:
+        st.session_state[txt_key] = st.session_state[APP_KEY]["inputs"].get(name, "")
     text = st.text_area(
         "📝 Pega aquí el texto:",
-        value=st.session_state[APP_KEY]["inputs"][name],
         key=txt_key,
         height=200,
         placeholder=f"Pega aquí los datos de {name}..."
     )
-    st.session_state[APP_KEY]["inputs"][name] = text
+    st.session_state[APP_KEY]["inputs"][name] = st.session_state[txt_key]
     
     # Botón de limpiar
     with col2:
