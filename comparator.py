@@ -230,7 +230,6 @@ def build_three_tables(
             "fecha_notificacion": d.get("notif_ayer",""),
             "placa": d.get("placa_ayer",""),
             "plataformas": platmap_ayer.get(k, ""),
-            "plataformas": "",
             "numero_veces": "",
             "estado": "ELIMINADO",
         })
